@@ -1,0 +1,97 @@
+const axios = require('axios');
+
+/**
+ * Google Places Adapter - Strategy pattern implementation
+ * Provides enriched POI data (photos, ratings, reviews)
+ * Quota-sensitive: 5,000 req/month on free tier
+ */
+class PlacesAdapter {
+    constructor(apiKey) {
+        this.apiKey = apiKey;
+        this.baseUrl = 'https://maps.googleapis.com/maps/api/place';
+    }
+
+    async searchPOI(query, lat, lng, radius = 5000) {
+        try {
+            const response = await axios.get(`${this.baseUrl}/nearbysearch/json`, {
+                params: {
+                    location: `${lat},${lng}`,
+                    radius,
+                    keyword: query,
+                    key: this.apiKey,
+                },
+                timeout: 10000,
+            });
+
+            return response.data.results.map(place => this._normalize(place));
+        } catch (error) {
+            console.error('Google Places search error:', error.message);
+            return [];
+        }
+    }
+
+    async getPlaceDetails(placeId) {
+        try {
+            const response = await axios.get(`${this.baseUrl}/details/json`, {
+                params: {
+                    place_id: placeId,
+                    fields: 'name,formatted_address,geometry,rating,user_ratings_total,photos,opening_hours,formatted_phone_number,website,price_level,types',
+                    key: this.apiKey,
+                },
+                timeout: 10000,
+            });
+
+            const place = response.data.result;
+            return {
+                placeId: placeId,
+                name: place.name,
+                address: place.formatted_address,
+                lat: place.geometry?.location?.lat,
+                lng: place.geometry?.location?.lng,
+                rating: place.rating,
+                totalRatings: place.user_ratings_total,
+                photos: place.photos?.slice(0, 3).map(p => this._getPhotoUrl(p.photo_reference)) || [],
+                openingHours: place.opening_hours?.weekday_text || null,
+                phone: place.formatted_phone_number || null,
+                website: place.website || null,
+                priceLevel: place.price_level,
+                source: 'google_places',
+            };
+        } catch (error) {
+            console.error('Google Places details error:', error.message);
+            return null;
+        }
+    }
+
+    _getPhotoUrl(photoReference, maxWidth = 400) {
+        return `${this.baseUrl}/photo?maxwidth=${maxWidth}&photo_reference=${photoReference}&key=${this.apiKey}`;
+    }
+
+    _normalize(place) {
+        return {
+            id: `gp_${place.place_id}`,
+            placeId: place.place_id,
+            name: place.name,
+            lat: place.geometry?.location?.lat,
+            lng: place.geometry?.location?.lng,
+            category: this._detectCategory(place.types || []),
+            address: place.vicinity || null,
+            rating: place.rating || null,
+            totalRatings: place.user_ratings_total || 0,
+            photo: place.photos?.[0]
+                ? this._getPhotoUrl(place.photos[0].photo_reference)
+                : null,
+            priceLevel: place.price_level,
+            source: 'google_places',
+        };
+    }
+
+    _detectCategory(types) {
+        if (types.includes('lodging') || types.includes('hotel')) return 'hotel';
+        if (types.includes('restaurant') || types.includes('cafe') || types.includes('food')) return 'restaurant';
+        if (types.includes('tourist_attraction') || types.includes('museum') || types.includes('point_of_interest')) return 'landmark';
+        return 'other';
+    }
+}
+
+module.exports = PlacesAdapter;
