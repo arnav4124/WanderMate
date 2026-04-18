@@ -23,6 +23,12 @@ class PlacesAdapter {
                 timeout: 10000,
             });
 
+            if (response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
+                console.error('Google Places API status:', response.data.status, response.data.error_message || '');
+                return [];
+            }
+
+            console.log(`Google Places: ${response.data.results?.length || 0} results (status: ${response.data.status})`);
             return response.data.results.map(place => this._normalize(place));
         } catch (error) {
             console.error('Google Places search error:', error.message);

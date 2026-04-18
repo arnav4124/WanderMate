@@ -9,7 +9,9 @@ export const FIREBASE_CONFIG = {
   measurementId: "G-FDFZ1ENBB7"
 };
 
-export const API_BASE_URL = 'http://10.0.2.2:5000/api'; // Android emulator -> localhost
+// export const API_BASE_URL = 'http://10.0.2.2:5000/api'; // Android emulator -> localhost
 // export const API_BASE_URL = 'http://localhost:5000/api'; // iOS simulator / web
+// export const API_BASE_URL = 'http://192.168.137.1:5000/api'; // Laptop hotspot (phone connects to laptop)
+export const API_BASE_URL = 'http://172.31.59.16:5000/api'; // Phone hotspot (laptop connects to phone WiFi)
 
 export const GOOGLE_WEB_CLIENT_ID = '483835352991-ivhlte3v6mj8d8nkkkof1gfouncveu3b.apps.googleusercontent.com';

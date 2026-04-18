@@ -9,8 +9,10 @@ const travelService = getTravelService();
 
 // GET /api/poi/search?q=query&lat=&lng=&radius=
 router.get('/search', externalApiLimiter, async (req, res) => {
+    const startTime = Date.now();
     try {
         const { q, lat, lng, radius } = req.query;
+        console.log(`[POI /search] q="${q}" lat=${lat} lng=${lng} radius=${radius}`);
 
         if (!q || !lat || !lng) {
             return res.status(400).json({ error: 'q, lat, and lng are required' });
@@ -23,6 +25,7 @@ router.get('/search', externalApiLimiter, async (req, res) => {
             parseInt(radius) || 5000
         );
 
+        console.log(`[POI /search] ${results.length} results in ${Date.now() - startTime}ms`);
         res.json(results);
     } catch (error) {
         console.error('POI search error:', error);

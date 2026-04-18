@@ -79,13 +79,15 @@ router.post('/', async (req, res) => {
 
         await trip.save();
 
-        // Sync to Firebase Realtime Database for real-time collaboration
-        await firebaseDB.ref(`trips/${trip._id}`).set({
+        // Fire-and-forget Firebase sync — do not block the HTTP response
+        firebaseDB.ref(`trips/${trip._id}`).set({
             name: trip.name,
             destination: trip.destination,
             owner: req.user.uid,
             updatedAt: Date.now(),
-        });
+        })
+            .then(() => console.log(`Firebase synced trip ${trip._id}`))
+            .catch((err) => console.error('Firebase sync error:', err));
 
         res.status(201).json(trip);
     } catch (error) {

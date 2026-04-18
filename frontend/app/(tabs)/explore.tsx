@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, StyleSheet, FlatList, Alert } from 'react-native';
 import { Text, Searchbar, Chip, Card, useTheme, Button, IconButton, Surface, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import api from '@/services/api';
 import { POI } from '@/types';
 import { useTripStore } from '@/stores/tripStore';
@@ -13,11 +14,23 @@ export default function ExploreScreen() {
     const theme = useTheme();
     const { trips, currentTrip, addStop } = useTripStore();
     const [query, setQuery] = useState('');
-    const [lat, setLat] = useState('48.8566'); // Default: Paris
-    const [lng, setLng] = useState('2.3522');
+    const [lat, setLat] = useState('17.3616'); // Default: Hyderabad
+    const [lng, setLng] = useState('78.4747');
     const [results, setResults] = useState<POI[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+    // Get device location on mount
+    useEffect(() => {
+        (async () => {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+                const loc = await Location.getCurrentPositionAsync({});
+                setLat(loc.coords.latitude.toString());
+                setLng(loc.coords.longitude.toString());
+            }
+        })();
+    }, []);
 
     const searchPOI = useCallback(async () => {
         if (!query && !selectedCategory) return;

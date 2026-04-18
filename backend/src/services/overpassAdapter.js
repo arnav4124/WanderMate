@@ -3,32 +3,60 @@ const axios = require('axios');
 /**
  * Overpass Adapter - Strategy pattern implementation
  * Queries OpenStreetMap data via Overpass API (free, unlimited)
+ * Uses multiple mirrors with fallback for reliability.
  */
 class OverpassAdapter {
     constructor() {
-        this.baseUrl = 'https://overpass-api.de/api/interpreter';
+        this.mirrors = [
+            'https://overpass-api.de/api/interpreter',
+            'https://overpass.kumi.systems/api/interpreter',
+            'https://overpass.openstreetmap.ru/api/interpreter',
+            'https://overpass.osm.ch/api/interpreter',
+            'https://overpass.nchc.org.tw/api/interpreter',
+        ];
+    }
+
+    async _post(body) {
+        const encoded = encodeURIComponent(body);
+        for (const url of this.mirrors) {
+            // Try POST first, then GET — some mirrors reject one but not the other
+            try {
+                const response = await axios.post(url, `data=${encoded}`, {
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                });
+                console.log(`Overpass success via POST: ${url}`);
+                return response.data;
+            } catch (postErr) {
+                console.warn(`Overpass POST ${url} failed: ${postErr.message}. Trying GET...`);
+                try {
+                    const response = await axios.get(`${url}?data=${encoded}`);
+                    console.log(`Overpass success via GET: ${url}`);
+                    return response.data;
+                } catch (getErr) {
+                    console.warn(`Overpass GET ${url} failed: ${getErr.message}. Trying next mirror...`);
+                }
+            }
+        }
+        throw new Error('All Overpass mirrors failed (POST + GET)');
     }
 
     async searchPOI(query, lat, lng, radius = 5000) {
+        // Sanitize query to prevent QL injection
+        const safeQuery = query.replace(/[^\w\s]/g, '').trim().slice(0, 50);
         const overpassQuery = `
-      [out:json][timeout:25];
+      [out:json][maxsize:1048576];
       (
+        node["name"~"${safeQuery}",i](around:${radius},${lat},${lng});
         node["tourism"~"hotel|hostel|motel|guest_house"](around:${radius},${lat},${lng});
         node["amenity"~"restaurant|cafe|bar|fast_food"](around:${radius},${lat},${lng});
         node["tourism"~"attraction|museum|viewpoint"](around:${radius},${lat},${lng});
-        node["historic"](around:${radius},${lat},${lng});
-        node["name"~"${query}",i](around:${radius},${lat},${lng});
       );
-      out body;
+      out center 50;
     `;
 
         try {
-            const response = await axios.post(this.baseUrl, `data=${encodeURIComponent(overpassQuery)}`, {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                timeout: 15000,
-            });
-
-            return response.data.elements.map(el => this._normalize(el));
+            const data = await this._post(overpassQuery);
+            return data.elements.map(el => this._normalize(el));
         } catch (error) {
             console.error('Overpass API error:', error.message);
             return [];
@@ -39,24 +67,20 @@ class OverpassAdapter {
         const categoryMap = {
             hotel: '["tourism"~"hotel|hostel|motel|guest_house"]',
             restaurant: '["amenity"~"restaurant|cafe|bar|fast_food"]',
-            landmark: '["tourism"~"attraction|museum|viewpoint"]["historic"]',
-            activity: '["leisure"]["sport"]',
+            landmark: '["tourism"~"attraction|museum|viewpoint"]',
+            activity: '["leisure"]',
         };
 
         const filter = categoryMap[category] || '["tourism"]';
         const overpassQuery = `
-      [out:json][timeout:25];
+      [out:json][maxsize:1048576];
       node${filter}(around:${radius},${lat},${lng});
-      out body;
+      out center 50;
     `;
 
         try {
-            const response = await axios.post(this.baseUrl, `data=${encodeURIComponent(overpassQuery)}`, {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                timeout: 15000,
-            });
-
-            return response.data.elements.map(el => this._normalize(el));
+            const data = await this._post(overpassQuery);
+            return data.elements.map(el => this._normalize(el));
         } catch (error) {
             console.error('Overpass category search error:', error.message);
             return [];

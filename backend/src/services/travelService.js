@@ -28,34 +28,69 @@ class TravelService {
     async searchPOI(query, lat, lng, radius = 5000) {
         const cacheKey = `poi:${query}:${lat}:${lng}:${radius}`;
         const cached = cache.get(cacheKey);
-        if (cached) return cached;
-
-        // Primary: Overpass (free, unlimited)
-        let results = await this.overpass.searchPOI(query, lat, lng, radius);
-
-        // Enrich with Google Places if available (Strategy fallback)
-        try {
-            const placesResults = await this.places.searchPOI(query, lat, lng, radius);
-            // Merge results, prioritizing Google Places data for matching POIs
-            results = this._mergeResults(results, placesResults);
-        } catch (error) {
-            console.warn('Google Places unavailable, using Overpass-only results');
-            // Graceful degradation: continue with Overpass results only
+        if (cached) {
+            console.log(`POI cache hit: ${cacheKey}`);
+            return cached;
         }
+
+        console.log(`POI search: query="${query}" lat=${lat} lng=${lng} radius=${radius}`);
+
+        // Run Overpass and Google Places in parallel to avoid sequential timeout stacking
+        const [overpassResults, placesResults] = await Promise.all([
+            this.overpass.searchPOI(query, lat, lng, radius).catch(err => {
+                console.warn('Overpass failed:', err.message);
+                return [];
+            }),
+            this.places.apiKey
+                ? this.places.searchPOI(query, lat, lng, radius).catch(err => {
+                    console.warn('Google Places failed:', err.message);
+                    return [];
+                })
+                : Promise.resolve([]),
+        ]);
+        console.log("Ma ka bhosda aag : ", overpassResults, placesResults);
+        console.log(`POI results: overpass=${overpassResults.length}, places=${placesResults.length}`);
+
+        let results = placesResults.length > 0
+            ? this._mergeResults(overpassResults, placesResults)
+            : overpassResults;
 
         cache.set(cacheKey, results, 1800); // Cache for 30 minutes
         return results;
     }
 
     /**
-     * Search by category using Overpass
+     * Search by category — Overpass + Google Places in parallel
      */
     async searchByCategory(category, lat, lng, radius = 5000) {
         const cacheKey = `cat:${category}:${lat}:${lng}:${radius}`;
         const cached = cache.get(cacheKey);
-        if (cached) return cached;
+        if (cached) {
+            console.log(`Category cache hit: ${cacheKey}`);
+            return cached;
+        }
 
-        const results = await this.overpass.searchByCategory(category, lat, lng, radius);
+        console.log(`Category search: "${category}" lat=${lat} lng=${lng} radius=${radius}`);
+
+        const [overpassResults, placesResults] = await Promise.all([
+            this.overpass.searchByCategory(category, lat, lng, radius).catch(err => {
+                console.warn('Overpass category failed:', err.message);
+                return [];
+            }),
+            this.places.apiKey
+                ? this.places.searchPOI(category, lat, lng, radius).catch(err => {
+                    console.warn('Google Places category fallback failed:', err.message);
+                    return [];
+                })
+                : Promise.resolve([]),
+        ]);
+
+        console.log(`Category results: overpass=${overpassResults.length}, places=${placesResults.length}`);
+
+        let results = placesResults.length > 0
+            ? this._mergeResults(overpassResults, placesResults)
+            : overpassResults;
+
         cache.set(cacheKey, results, 1800);
         return results;
     }
