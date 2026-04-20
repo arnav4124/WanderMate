@@ -16,6 +16,11 @@ const api = axios.create({
 
 // Request interceptor: attach Firebase JWT token
 api.interceptors.request.use(async (config) => {
+    // Prevent early unauthenticated requests while persisted auth is being restored.
+    if (typeof (auth as any).authStateReady === 'function') {
+        await (auth as any).authStateReady();
+    }
+
     const user = auth.currentUser;
     if (user) {
         const token = await user.getIdToken();
@@ -28,8 +33,13 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        const status = error.response?.status;
         const message = error.response?.data?.error || error.message || 'Network error';
-        console.error('API Error:', message);
+
+        if (!(status === 401 && !auth.currentUser)) {
+            console.error('API Error:', message);
+        }
+
         return Promise.reject(new Error(message));
     }
 );

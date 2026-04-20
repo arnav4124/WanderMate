@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useTripStore } from '@/stores/tripStore';
+import { useAuthStore } from '@/stores/authStore';
 import { Trip } from '@/types';
 
 function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
@@ -89,14 +90,17 @@ export default function TripsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { trips, isLoading, fetchTrips } = useTripStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchTrips();
-  }, []);
+  }, [isAuthenticated, fetchTrips]);
 
   const onRefresh = useCallback(() => {
+    if (!isAuthenticated) return;
     fetchTrips();
-  }, []);
+  }, [isAuthenticated, fetchTrips]);
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>

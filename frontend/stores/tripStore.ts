@@ -29,7 +29,7 @@ interface TripState {
     createTrip: (data: Partial<Trip>) => Promise<Trip | null>;
     updateTrip: (id: string, data: Partial<Trip>) => Promise<void>;
     deleteTrip: (id: string) => Promise<void>;
-    addStop: (tripId: string, dayIndex: number, stop: Partial<Stop>) => Promise<void>;
+    addStop: (tripId: string, dayIndex: number, stop: Partial<Stop>) => Promise<Trip | null>;
     removeStop: (tripId: string, dayIndex: number, stopId: string) => Promise<void>;
     reorderStops: (tripId: string, dayIndex: number, stopOrder: string[]) => Promise<void>;
     addCollaborator: (tripId: string, userId: string) => Promise<void>;
@@ -132,8 +132,10 @@ export const useTripStore = create<TripState>((set, get) => ({
         const previousTrip = get().currentTrip;
         try {
             const response = await api.post(`/trips/${tripId}/days/${dayIndex}/stops`, stop);
+            const updatedTrip = response.data as Trip;
             set((state) => ({
-                currentTrip: response.data,
+                currentTrip: state.currentTrip?._id === tripId ? updatedTrip : state.currentTrip,
+                trips: state.trips.map((t) => (t._id === tripId ? updatedTrip : t)),
                 undoStack: [...state.undoStack, {
                     type: 'ADD_STOP',
                     tripId,
@@ -142,7 +144,12 @@ export const useTripStore = create<TripState>((set, get) => ({
                     previousState: previousTrip,
                 }],
                 redoStack: [],
+                error: null,
             }));
+
+            await localCache.set(`trip_${tripId}`, updatedTrip);
+            await localCache.set('trips', get().trips);
+            return updatedTrip;
         } catch (error: any) {
             await syncQueue.add({
                 method: 'POST',
@@ -150,6 +157,7 @@ export const useTripStore = create<TripState>((set, get) => ({
                 data: stop,
             });
             set({ error: error.message });
+            return null;
         }
     },
 

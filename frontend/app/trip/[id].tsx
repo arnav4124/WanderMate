@@ -8,10 +8,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import * as Location from 'expo-location';
 import { useTripStore } from '@/stores/tripStore';
 import { useFeedStore } from '@/stores/feedStore';
 import { CategoryColors, CategoryIcons } from '@/constants/theme';
-import { Stop, Day } from '@/types';
+import { Stop } from '@/types';
 
 export default function TripDetailScreen() {
     const theme = useTheme();
@@ -32,6 +33,8 @@ export default function TripDetailScreen() {
     const [stopLng, setStopLng] = useState('');
     const [stopCategory, setStopCategory] = useState('other');
     const [stopNotes, setStopNotes] = useState('');
+    const [manualCoordinates, setManualCoordinates] = useState(false);
+    const [addingStop, setAddingStop] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
     const [menuVisible, setMenuVisible] = useState(false);
 
@@ -44,20 +47,78 @@ export default function TripDetailScreen() {
     }, [id]);
 
     const handleAddStop = async () => {
-        if (!stopName || !stopLat || !stopLng || !id) return;
-        await addStop(id, selectedDay, {
-            name: stopName,
-            lat: parseFloat(stopLat),
-            lng: parseFloat(stopLng),
+        if (!id) return;
+
+        const trimmedName = stopName.trim();
+        if (!trimmedName) {
+            Alert.alert('Missing Name', 'Please enter a stop name.');
+            return;
+        }
+
+        let lat: number | null = null;
+        let lng: number | null = null;
+        const usingManualCoordinates = manualCoordinates || stopLat.trim().length > 0 || stopLng.trim().length > 0;
+
+        if (usingManualCoordinates) {
+            if (!stopLat.trim() || !stopLng.trim()) {
+                Alert.alert('Coordinates Required', 'Enter both latitude and longitude, or turn off manual coordinates.');
+                return;
+            }
+
+            const parsedLat = parseFloat(stopLat);
+            const parsedLng = parseFloat(stopLng);
+            if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+                Alert.alert('Invalid Coordinates', 'Please enter valid numeric latitude and longitude values.');
+                return;
+            }
+
+            lat = parsedLat;
+            lng = parsedLng;
+        } else {
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert(
+                        'Location Permission Needed',
+                        'Allow location access to auto-fill coordinates, or enable manual coordinates in this form.'
+                    );
+                    return;
+                }
+
+                const loc = await Location.getCurrentPositionAsync({});
+                lat = loc.coords.latitude;
+                lng = loc.coords.longitude;
+            } catch (error) {
+                console.error('Could not fetch current location for stop:', error);
+                Alert.alert('Location Error', 'Could not get your current location. Enable manual coordinates and try again.');
+                return;
+            }
+        }
+
+        setAddingStop(true);
+        const updatedTrip = await addStop(id, selectedDay, {
+            name: trimmedName,
+            lat,
+            lng,
             category: stopCategory as any,
             notes: stopNotes || undefined,
             order: 0,
         });
+
+        setAddingStop(false);
+        if (!updatedTrip) {
+            Alert.alert('Could Not Add Stop', 'The stop was not saved. Please try again.');
+            return;
+        }
+
         setShowAddStop(false);
         setStopName('');
         setStopLat('');
         setStopLng('');
         setStopNotes('');
+        setStopCategory('other');
+        setManualCoordinates(false);
+        Alert.alert('Stop Added', `${trimmedName} was added to Day ${selectedDay + 1}.`);
     };
 
     const handleRemoveStop = (stopId: string) => {
@@ -279,10 +340,31 @@ export default function TripDetailScreen() {
                         Add Stop
                     </Text>
                     <TextInput label="Place Name" value={stopName} onChangeText={setStopName} mode="outlined" style={styles.input} />
-                    <View style={styles.coordRow}>
-                        <TextInput label="Latitude" value={stopLat} onChangeText={setStopLat} mode="outlined" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
-                        <TextInput label="Longitude" value={stopLng} onChangeText={setStopLng} mode="outlined" keyboardType="decimal-pad" style={[styles.input, { flex: 1, marginLeft: 8 }]} />
-                    </View>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 10 }}>
+                        Coordinates are optional. We can auto-use your current location.
+                    </Text>
+                    <Button
+                        mode={manualCoordinates ? 'contained-tonal' : 'outlined'}
+                        compact
+                        onPress={() => {
+                            setManualCoordinates(!manualCoordinates);
+                            if (manualCoordinates) {
+                                setStopLat('');
+                                setStopLng('');
+                            }
+                        }}
+                        style={{ marginBottom: 10 }}
+                        icon={manualCoordinates ? 'crosshairs-gps' : 'map-marker-edit'}
+                    >
+                        {manualCoordinates ? 'Using Manual Coordinates' : 'Set Coordinates Manually'}
+                    </Button>
+
+                    {manualCoordinates && (
+                        <View style={styles.coordRow}>
+                            <TextInput label="Latitude" value={stopLat} onChangeText={setStopLat} mode="outlined" keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} />
+                            <TextInput label="Longitude" value={stopLng} onChangeText={setStopLng} mode="outlined" keyboardType="decimal-pad" style={[styles.input, { flex: 1, marginLeft: 8 }]} />
+                        </View>
+                    )}
                     <TextInput label="Notes (optional)" value={stopNotes} onChangeText={setStopNotes} mode="outlined" style={styles.input} multiline />
 
                     <View style={styles.categoryPicker}>
@@ -300,7 +382,7 @@ export default function TripDetailScreen() {
                         ))}
                     </View>
 
-                    <Button mode="contained" onPress={handleAddStop} style={styles.addButton} disabled={!stopName || !stopLat || !stopLng}>
+                    <Button mode="contained" onPress={handleAddStop} style={styles.addButton} disabled={!stopName.trim() || addingStop} loading={addingStop}>
                         Add Stop
                     </Button>
                 </Modal>
