@@ -1,7 +1,7 @@
 % ============================================================
 %  WanderMate -- Project 3 Task 1 Deliverable
 %  Team 8 · S26CS6.401 Software Engineering
-%  Requirements & Subsystem Overview
+%  Requirements \& Subsystem Overview
 % ============================================================
 \documentclass[12pt, a4paper]{article}
 
@@ -157,7 +157,7 @@ Functional requirements define what the WanderMate system must \emph{do} --- the
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The itinerary is the central domain entity that every other subsystem reads from or writes to. Its schema design drives the MongoDB data model, the Firebase Realtime Database structure, the offline-storage strategy, and the Command-pattern undo/redo stack.
+  \textbf{Architectural significance.} The itinerary is the central domain entity that every other subsystem reads from or writes to. Its schema design drives the MongoDB data model (nested \texttt{days[]} and \texttt{stops[]} subdocuments within the \texttt{Trip} document), the Firebase Realtime Database structure for collaborative sync, the AsyncStorage-backed offline cache, and the Zustand-based undo/redo stack.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -171,21 +171,21 @@ Functional requirements define what the WanderMate system must \emph{do} --- the
 \endfoot
 
 \reqid{FR-01} & Itinerary &
-Users shall be able to create a new trip with a name, destination, and date range. &
+Users shall be able to create a new trip with a name, destination, and date range. The system shall automatically generate a \texttt{days[]} array with one entry per calendar day in the range. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-02} & Itinerary &
-Users shall be able to add, edit, remove, and reorder stops within any day of a trip via drag-and-drop. &
+Users shall be able to add, edit, remove, and reorder stops within any day of a trip. Reordering is supported via dedicated reorder API endpoints and move-up/move-down controls in the Explore screen's itinerary panel. &
 \high \\
 
 \reqid{FR-03} & Itinerary &
-The system shall persist itinerary data locally (AsyncStorage) and synchronise to the backend when connectivity is restored. &
+The system shall persist itinerary data locally via AsyncStorage (using the \texttt{localCache} module) and queue mutations for server synchronisation when connectivity is restored (using the \texttt{syncQueue} module). &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-04} & Itinerary &
-Users shall be able to perform undo and redo on itinerary editing actions (add stop, remove day, reorder). &
+Users shall be able to perform undo and redo on itinerary editing actions (add stop, remove stop, reorder, update trip). The \texttt{tripStore} maintains ordered \texttt{undoStack} and \texttt{redoStack} arrays to support multi-level undo/redo. &
 \medium \\
 
 \end{longtable}
@@ -195,7 +195,7 @@ Users shall be able to perform undo and redo on itinerary editing actions (add s
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The dual-API design (Overpass as primary, Google Places for enrichment) introduces a Strategy pattern abstraction and a caching layer to control free-tier quota consumption. Switching providers must require zero changes to UI components.
+  \textbf{Architectural significance.} The dual-API design uses Google Places as the primary POI provider (for search, category browsing, ratings, photos, and opening hours) with the OpenRouteService (ORS) POI endpoint as a fallback when Google Places returns no results. An Overpass API adapter was initially developed but is currently disabled; the Facade pattern allows it to be re-enabled without changes to calling code. A server-side \texttt{node-cache} caching layer controls free-tier quota consumption.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -209,21 +209,21 @@ Users shall be able to perform undo and redo on itinerary editing actions (add s
 \endfoot
 
 \reqid{FR-05} & POI Discovery &
-Users shall be able to search for hotels, restaurants, and landmarks by keyword and category using the Overpass API (OpenStreetMap data). &
+Users shall be able to search for hotels, restaurants, landmarks, and activities by keyword and category. The primary search is served by the Google Places Text Search and Nearby Search APIs; when Google Places returns zero results, the system falls back to the ORS POI endpoint. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-06} & POI Discovery &
-The system shall display ratings, photos, and opening hours for each POI via the Google Places API. &
+The system shall display ratings, photos, opening hours, and price levels for each POI via the Google Places API. The \texttt{PlacesAdapter} normalises these fields into a common \texttt{POI} interface shared across all providers. &
 \high \\
 
 \reqid{FR-07} & POI Discovery &
-API responses from Overpass and Google Places shall be cached to reduce latency and respect free-tier quotas (Google Places: 5\,000 req/month). &
+API responses from Google Places and ORS shall be cached server-side using \texttt{node-cache} (30-minute TTL for search results, 24-hour TTL for place details) to reduce latency and respect free-tier quotas. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-08} & POI Discovery &
-Users shall be able to add a discovered POI to any day of their active itinerary with a single tap. &
+Users shall be able to add a discovered POI to any day of their active itinerary with a single tap via the ``Add to Trip'' button on each POI card in the Explore screen. &
 \high \\
 
 \end{longtable}
@@ -233,7 +233,7 @@ Users shall be able to add a discovered POI to any day of their active itinerary
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} Embedding Leaflet inside a React Native WebView creates a cross-boundary JavaScript bridge. Route optimisation calls OpenRouteService (ORS) and must respect its daily quota of 2\,000 requests, necessitating caching and client-side debouncing.
+  \textbf{Architectural significance.} Embedding Leaflet inside a React Native \texttt{WebView} creates a cross-boundary JavaScript bridge. Route optimisation calls OpenRouteService (ORS) and must respect its daily quota of 2\,000 requests. The ORS adapter implements both simple route calculation and multi-stop optimisation via the ORS \texttt{/optimization} endpoint (VROOM solver), with caching and rate limiting at the API Gateway layer.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -247,16 +247,16 @@ Users shall be able to add a discovered POI to any day of their active itinerary
 \endfoot
 
 \reqid{FR-09} & Routing &
-The system shall render an interactive map of each day's itinerary using Leaflet and OpenStreetMap tiles inside a React Native WebView. &
+The system shall render an interactive map of each day's itinerary using Leaflet and OpenStreetMap tiles inside a React Native \texttt{WebView}. Both the dedicated map screen (\texttt{trip/map/[id].tsx}) and the integrated Explore screen map mode use this approach. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-10} & Routing &
-The system shall compute an optimised multi-stop route for each itinerary day via the OpenRouteService API and overlay the polyline on the map. &
+The system shall compute an optimised multi-stop route for each itinerary day via the ORS Directions API (\texttt{/v2/directions/\{profile\}/geojson}) and overlay the GeoJSON polyline on the map. For more than two stops, the ORS Optimization API (\texttt{/optimization}) determines the optimal visit order before computing the route. &
 \high \\
 
 \reqid{FR-11} & Routing &
-The map shall update in real time as stops are added, removed, or reordered in the itinerary editor, without requiring a manual refresh. &
+The map shall update automatically as stops are added, removed, or reordered in the Explore screen's itinerary panel. The Leaflet WebView re-renders whenever the underlying trip state (managed by \texttt{tripStore}) changes, without requiring a manual refresh. &
 \medium \\
 
 \end{longtable}
@@ -266,7 +266,7 @@ The map shall update in real time as stops are added, removed, or reordered in t
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} Expense data must be associated with trips and users, influencing the MongoDB schema with nested subdocuments. Split-expense calculation requires deterministic server-side logic to remain consistent across all collaborators on a shared trip.
+  \textbf{Architectural significance.} Expense data is stored in a dedicated \texttt{Expense} MongoDB collection, referenced by \texttt{trip} ObjectId. The budget API computes per-day summaries, category breakdowns, and per-person split amounts server-side (deterministic logic). Real-time synchronisation across collaborators is achieved via Firebase Realtime Database listeners on \texttt{budgets/\{tripId\}/lastUpdate}.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -280,21 +280,21 @@ The map shall update in real time as stops are added, removed, or reordered in t
 \endfoot
 
 \reqid{FR-12} & Budget &
-Users shall be able to log individual expenses, each tagged with a category (accommodation, food, transport, activities, other) and a specific itinerary day. &
+Users shall be able to log individual expenses, each tagged with a category (accommodation, food, transport, activities, other) and associated with a specific trip. The Explore screen also supports inline cost entry per stop, which automatically creates a corresponding expense. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-13} & Budget &
-The system shall display per-day expense summaries and a running trip total, automatically updating as new expenses are added or removed. &
+The system shall display a total trip budget, per-category breakdowns with progress bars, and a per-person share. The budget summary is computed server-side in the \texttt{GET /api/budget/:tripId} endpoint and rendered in the Budget tab with visual category cards. &
 \high \\
 
 \reqid{FR-14} & Budget &
-Users shall be able to split a group trip's total expenses equally among participants and view each person's calculated share. &
+Users shall be able to split a group trip's total expenses equally among all participants (owner $+$ collaborators). The per-person share is calculated server-side and displayed in the Budget summary card. &
 \medium \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-15} & Budget &
-Budget data shall synchronise across all collaborators on a shared trip in real time via Firebase Realtime Database. &
+Budget data shall synchronise across all collaborators on a shared trip in real time. The \texttt{budgetStore} subscribes to \texttt{budgets/\{tripId\}/lastUpdate} via a Firebase \texttt{onValue} listener; any update triggers a re-fetch of the full budget from the API. &
 \medium \\
 
 \end{longtable}
@@ -304,7 +304,7 @@ Budget data shall synchronise across all collaborators on a shared trip in real 
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The social feed introduces a publish/subscribe model at the data layer that is distinct from the collaborative editing channel. Feed post volume could grow unbounded, requiring cursor-based pagination in MongoDB and indexed queries in Firebase to avoid full-collection scans.
+  \textbf{Architectural significance.} The social feed is backed by a dedicated \texttt{FeedPost} MongoDB collection with indexes on \texttt{createdAt} and \texttt{likeCount} for efficient pagination and sorting. Feed posts are denormalised snapshots (trip name, destination, budget summary, stop count) rather than live references, ensuring feed rendering is independent of trip mutations. Cursor-based pagination is implemented via \texttt{skip/limit} queries.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -318,21 +318,21 @@ Budget data shall synchronise across all collaborators on a shared trip in real 
 \endfoot
 
 \reqid{FR-16} & Social Feed &
-Users shall be able to publish a completed trip to a public social feed; each post shall display a cover thumbnail, trip duration, participant count, and total budget summary. &
+Users shall be able to publish a completed trip to a public social feed. Each feed post displays the author name and avatar, trip name, destination, duration, participant count, total budget, and stop count. The \texttt{POST /api/feed/publish/:tripId} endpoint atomically creates the \texttt{FeedPost} document, marks the trip as published, and writes a Firebase event for real-time propagation. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-17} & Social Feed &
-Users shall be able to follow other travellers and browse a personalised feed of published itineraries from people they follow. &
+Users shall be able to follow and unfollow other travellers, and browse a personalised ``Following'' feed filtered to posts by followed users. The feed screen provides a \texttt{SegmentedButtons} toggle between ``Discover'' (all posts) and ``Following'' modes. &
 \high \\
 
 \reqid{FR-18} & Social Feed &
-Users shall be able to like published itineraries; like counts shall be visible on feed cards and update in real time. &
+Users shall be able to like and unlike published itineraries. Like counts are visible on feed cards and toggle state is persisted per-user via a \texttt{likes[]} array on the \texttt{FeedPost} document. &
 \medium \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-19} & Social Feed &
-Users shall be able to clone any public itinerary into their own trip list as an independently editable copy with a single tap. &
+Users shall be able to clone any public itinerary into their own trip list as an independently editable copy. The \texttt{POST /api/feed/:postId/clone} endpoint deep-copies the original trip's \texttt{days[]} and \texttt{stops[]} subdocuments, assigns the cloning user as the new owner, clears the \texttt{isPublished} flag, and writes the new trip atomically. &
 \high \\
 
 \end{longtable}
@@ -342,7 +342,7 @@ Users shall be able to clone any public itinerary into their own trip list as an
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} Real-time collaborative editing requires conflict-free state propagation (Observer pattern via Firebase listeners). Shared write access to trip documents demands authenticated session management and Firebase Security Rules enforced at the database layer to prevent unauthorised mutations.
+  \textbf{Architectural significance.} Real-time collaborative editing uses Firebase Realtime Database as an event bus. When any collaborator mutates a trip via the API Gateway, the backend writes an update event to \texttt{trips/\{tripId\}} in Firebase. All connected clients subscribe via \texttt{onValue} listeners (Observer pattern) and re-fetch the authoritative trip state from MongoDB. Authentication supports both Firebase Email/Password and Google Sign-In (OAuth 2.0); session persistence across app restarts is achieved via \texttt{getReactNativePersistence(AsyncStorage)}.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -356,21 +356,21 @@ Users shall be able to clone any public itinerary into their own trip list as an
 \endfoot
 
 \reqid{FR-20} & Collaboration &
-Users shall be able to invite other registered users to co-edit a trip. Changes by any collaborator shall propagate to all others in real time via Firebase Realtime Database. &
+Users shall be able to invite other registered users to co-edit a trip. The \texttt{POST /api/trips/:id/collaborators} endpoint adds a user's Firebase UID to the trip's \texttt{collaborators[]} array and broadcasts the update to Firebase. Changes by any collaborator propagate to all others in real time via Firebase \texttt{onValue} listeners in \texttt{tripStore.subscribeTripUpdates()}. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-21} & Collaboration &
-The system shall resolve concurrent edits using last-write-wins semantics; all mutations shall be timestamped server-side to establish a total order. &
+The system shall resolve concurrent edits using last-write-wins semantics. All mutations via the API Gateway are timestamped server-side (\texttt{updatedAt: Date.now()}) in both MongoDB and Firebase to establish a total order. &
 \high \\
 
 \reqid{FR-22} & Auth &
-Users shall be able to register and sign in using Google Sign-In via Firebase Authentication (OAuth 2.0). &
+Users shall be able to register and sign in using either email/password credentials or Google Sign-In via Firebase Authentication (OAuth 2.0). The sign-in screen provides both options with a toggle between ``Sign In'' and ``Create Account'' modes. &
 \high \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-23} & Auth &
-Authenticated sessions shall persist across app restarts and device reboots until the user explicitly signs out. &
+Authenticated sessions shall persist across app restarts and device reboots. On native platforms, Firebase Auth is initialised with \texttt{getReactNativePersistence(AsyncStorage)}, ensuring the user remains signed in until explicit sign-out. &
 \medium \\
 
 \end{longtable}
@@ -386,7 +386,7 @@ Non-functional requirements (NFRs) govern the quality attributes of WanderMate b
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural impact.} NFR-01 and NFR-02 drive the caching layer for Overpass and Google Places API responses inside the TravelService Facade. NFR-03 justifies the event-driven Firebase approach over a REST polling model, which would introduce noticeable lag for collaborators and unnecessary bandwidth consumption.
+  \textbf{Architectural impact.} NFR-01 and NFR-02 drive the \texttt{node-cache} caching layer inside the TravelService Facade: 30-minute TTL for search results and 1-hour TTL for route data. NFR-03 justifies the event-driven Firebase approach over a REST polling model, which would introduce noticeable lag for collaborators and unnecessary bandwidth consumption.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -405,11 +405,11 @@ $<$ 2\,s at p95 \\
 
 \rowcolor{tablealtbg}
 \reqid{NFR-02} & Performance &
-The social feed shall paginate results and display the first page of cards within 1.5 seconds of the Feed tab being opened. &
+The social feed shall paginate results (10 posts per page) and display the first page of cards within 1.5 seconds of the Feed tab being opened. &
 $<$ 1.5\,s first-page load \\
 
 \reqid{NFR-03} & Performance &
-Real-time itinerary updates shall propagate to all active collaborators within 500\,ms of a change being committed to Firebase. &
+Real-time itinerary and budget updates shall propagate to all active collaborators within 500\,ms of a change being committed to Firebase. &
 $<$ 500\,ms sync latency \\
 
 \end{longtable}
@@ -419,7 +419,7 @@ $<$ 500\,ms sync latency \\
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural impact.} NFR-06 is the primary economic constraint of the entire architecture. It is the central driver of the TravelService Facade (to centralise quota control) and the Repository caching strategy (to minimise outbound API calls). Exceeding free-tier limits would introduce direct financial cost to the project at launch.
+  \textbf{Architectural impact.} NFR-06 is the primary economic constraint of the entire architecture. It is the central driver of the TravelService Facade (to centralise quota control), the \texttt{node-cache} caching strategy (to minimise outbound API calls), and the \texttt{express-rate-limit} middleware applied to all external API proxy routes.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -438,11 +438,11 @@ The Node.js + Express API Gateway shall support at least 200 concurrent users wi
 
 \rowcolor{tablealtbg}
 \reqid{NFR-05} & Scalability &
-The MongoDB data schema shall support horizontal sharding by user ID to accommodate growth beyond 10\,000 registered users without schema migration. &
+The MongoDB data schema shall support horizontal sharding by user ID to accommodate growth beyond 10\,000 registered users without schema migration. Indexes on \texttt{owner}, \texttt{collaborators}, \texttt{firebaseUid}, and \texttt{createdAt} are defined to support this. &
 10\,000$+$ users \\
 
 \reqid{NFR-06} & Scalability &
-The system shall operate entirely within free-tier API quotas at launch: Overpass (unlimited), Google Places ($\leq$ 5\,000 req/month), ORS ($\leq$ 2\,000 req/day), achieved through caching and per-user rate limiting. &
+The system shall operate within free-tier API quotas at launch: Google Places ($\leq$ 5\,000 req/month), ORS ($\leq$ 2\,000 req/day), achieved through server-side \texttt{node-cache} caching and per-user \texttt{express-rate-limit} rate limiting (100 general req/15\,min, 50 external API req/hour). &
 Zero overage cost at launch \\
 
 \end{longtable}
@@ -452,7 +452,7 @@ Zero overage cost at launch \\
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural impact.} NFR-07 mandates AsyncStorage-backed offline-first storage and a persistent sync queue in the client layer. NFR-08 reinforces the Strategy pattern for POI providers so that the active provider can be swapped at runtime without restarting the application or impacting the UI layer.
+  \textbf{Architectural impact.} NFR-07 mandates the AsyncStorage-backed \texttt{localCache} and \texttt{syncQueue} modules on the client. NFR-08 is implemented via the Strategy pattern in \texttt{TravelService}: when Google Places fails, the search method falls back to ORS POI results without any change to the calling code or UI layer.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -466,16 +466,16 @@ Zero overage cost at launch \\
 \endfoot
 
 \reqid{NFR-07} & Availability &
-Core itinerary viewing and editing shall remain available when the device is offline. Changes shall be queued locally and synchronised to the server upon reconnection, with no data loss. &
+Core itinerary viewing and editing shall remain available when the device is offline. The \texttt{tripStore} reads from \texttt{localCache} when API calls fail, and mutations are queued in \texttt{syncQueue} for server sync on reconnect, with no data loss. &
 100\% offline read/write for cached data \\
 
 \rowcolor{tablealtbg}
 \reqid{NFR-08} & Reliability &
-If the Google Places API is unavailable, POI search shall degrade gracefully to Overpass-only results; no user-facing crash or blank screen shall occur. &
+If the Google Places API is unavailable, POI search shall degrade gracefully to ORS POI results; no user-facing crash or blank screen shall occur. The \texttt{TravelService.searchPOI()} method wraps each provider call in a try/catch and silently falls through to the next provider. &
 Zero crashes on external API failure \\
 
 \reqid{NFR-09} & Reliability &
-The API Gateway shall return a structured error response (HTTP 4xx/5xx with a JSON error body) for every failure scenario; no unhandled exceptions shall propagate to clients. &
+The API Gateway shall return a structured error response (HTTP 4xx/5xx with a JSON \texttt{\{error\}} body) for every failure scenario. A global Express error handler and per-route try/catch blocks ensure no unhandled exceptions propagate to clients. &
 100\% structured error responses \\
 
 \end{longtable}
@@ -485,7 +485,7 @@ The API Gateway shall return a structured error response (HTTP 4xx/5xx with a JS
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural impact.} NFR-11 is the primary reason the API Gateway subsystem exists as a standalone service rather than being embedded in the mobile client. The gateway acts as a secret vault, keeping all third-party API keys server-side and never exposing them in the mobile app bundle, which is inspectable by end users.
+  \textbf{Architectural impact.} NFR-11 is the primary reason the API Gateway subsystem exists as a standalone service rather than being embedded in the mobile client. The gateway acts as a secret vault, keeping all third-party API keys (Google Places, ORS) server-side as environment variables and never exposing them in the mobile app bundle. Firebase Auth JWT verification is performed by custom middleware on every authenticated route.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -504,12 +504,12 @@ TLS 1.2$+$ enforced on all channels \\
 
 \rowcolor{tablealtbg}
 \reqid{NFR-11} & Security &
-Third-party API keys (Google Places, OpenRouteService) shall never be embedded in the mobile app bundle. All calls to external APIs shall be proxied through the backend API Gateway. &
+Third-party API keys (Google Places, OpenRouteService) shall never be embedded in the mobile app bundle. All calls to external APIs shall be proxied through the backend API Gateway, which stores keys in \texttt{.env} environment variables. &
 Zero secrets in client bundle \\
 
 \reqid{NFR-12} & Security &
-Firebase Security Rules shall restrict read and write access to trip documents so that only the document owner and explicitly listed collaborators can mutate trip data. &
-Role-based access enforced at DB layer \\
+Backend authorisation middleware enforces per-trip access control: only the trip \texttt{owner} and users listed in the \texttt{collaborators[]} array can read or write trip data. Owner-only actions (delete trip, add collaborators, publish) are additionally enforced. &
+Role-based access enforced at API layer \\
 
 \end{longtable}
 
@@ -518,7 +518,7 @@ Role-based access enforced at DB layer \\
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural impact.} NFR-15 codifies the Facade + Strategy design decision as a non-negotiable maintainability requirement. It ensures that future provider migrations (e.g., replacing Overpass with a paid open dataset) do not propagate breaking changes through the React Native UI layer, protecting the product from vendor lock-in.
+  \textbf{Architectural impact.} NFR-15 codifies the Facade + Strategy design decision as a non-negotiable maintainability requirement. It ensures that future provider changes (e.g., re-enabling Overpass, replacing ORS) do not propagate breaking changes through the React Native UI layer, protecting the product from vendor lock-in.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -532,16 +532,16 @@ Role-based access enforced at DB layer \\
 \endfoot
 
 \reqid{NFR-13} & Usability &
-Any primary feature of the app (itinerary builder, map, budget tracker, social feed, profile) shall be reachable from any screen in no more than 3 taps. &
+Any primary feature of the app (trips list, explore/map, budget tracker, social feed, profile) shall be reachable from any screen in no more than 3 taps via the bottom tab bar. &
 Max 3 taps to any primary feature \\
 
 \rowcolor{tablealtbg}
 \reqid{NFR-14} & Maintainability &
-The codebase shall be organised into independently testable modules that align with subsystem boundaries (itinerary, POI, budget, social, auth); inter-module coupling shall be minimised. &
+The codebase shall be organised into independently testable modules aligned with subsystem boundaries. The frontend uses feature-based stores (\texttt{tripStore}, \texttt{budgetStore}, \texttt{feedStore}, \texttt{authStore}) and the backend uses feature-based route/model modules (trips, budget, feed, users, POI, routes). &
 Module fan-out $<$ 5 per module \\
 
 \reqid{NFR-15} & Maintainability &
-Swapping the POI provider (e.g., replacing Overpass with a different open dataset) shall require code changes only within the TravelService Facade; no changes to UI screens or API Gateway routes shall be necessary. &
+Swapping the POI provider (e.g., re-enabling Overpass, replacing ORS with an alternative) shall require code changes only within the \texttt{TravelService} Facade and the relevant adapter module; no changes to UI screens, API Gateway routes, or stores shall be necessary. &
 Facade fully isolates provider logic \\
 
 \end{longtable}
@@ -563,32 +563,32 @@ The following requirements are designated \textbf{Architecturally Significant Re
 \endfoot
 
 \reqid{FR-03} & Offline Persistence \& Sync &
-Mandates AsyncStorage-backed storage and a client-side sync queue. Shapes the Repository pattern and the client data model. \\
+Mandates the \texttt{localCache} and \texttt{syncQueue} modules backed by AsyncStorage. Shapes the client-side data flow: stores attempt API calls first, falling back to cache on failure and queuing mutations for later sync. \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-07} & API Response Caching &
-Drives the caching layer inside TravelService Facade. Directly mitigates the risk of exceeding free-tier API quotas. \\
+Drives the \texttt{node-cache}-based caching layer inside the TravelService Facade. Directly mitigates the risk of exceeding free-tier API quotas (Google Places, ORS). \\
 
 \reqid{FR-19} & Itinerary Clone &
-Requires the Social Feed and Itinerary subsystems to share a common trip schema so that cloned documents are immediately editable without data transformation. \\
+Requires the Social Feed and Itinerary subsystems to share a common trip schema so that cloned documents are immediately editable without data transformation. Implemented as a deep-copy operation in the \texttt{clone} route. \\
 
 \rowcolor{tablealtbg}
 \reqid{FR-20 / FR-21} & Real-time Collaboration &
-Justifies Firebase Realtime Database over a REST polling approach. Requires the Observer pattern with Firebase listeners throughout the Itinerary Engine. \\
+Justifies Firebase Realtime Database over a REST polling approach. Requires the Observer pattern with Firebase \texttt{onValue} listeners in \texttt{tripStore} and \texttt{budgetStore}. \\
 
 \reqid{NFR-06} & Free-tier Quota Compliance &
-The central economic constraint of the architecture. Drives both the Facade (central quota control) and the caching Repository (minimise outbound calls). \\
+The central economic constraint of the architecture. Drives both the Facade (central quota control), the \texttt{node-cache} caching (minimise outbound calls), and the \texttt{express-rate-limit} middleware (enforce per-user limits). \\
 
 \rowcolor{tablealtbg}
 \reqid{NFR-07} & Offline-first Availability &
-Elevates offline capability from a post-launch enhancement to a first-class architectural concern, requiring a dedicated sync queue and conflict-resolution strategy. \\
+Elevates offline capability from a post-launch enhancement to a first-class architectural concern, requiring the \texttt{syncQueue} and \texttt{localCache} services with conflict-resolution via last-write-wins. \\
 
 \reqid{NFR-11} & No Client-side Secrets &
-Mandates the API Gateway as a standalone subsystem. Without it, third-party API keys would be exposed in the mobile app bundle. \\
+Mandates the API Gateway as a standalone subsystem. Without it, third-party API keys (Google Places, ORS) would be exposed in the mobile app bundle. \\
 
 \rowcolor{tablealtbg}
 \reqid{NFR-15} & Provider Swappability &
-Enforces the Facade + Strategy pattern as a hard maintainability requirement, preventing UI components from taking a direct dependency on any specific POI provider. \\
+Enforces the Facade + Strategy pattern as a hard maintainability requirement. The \texttt{TravelService} class wraps all provider adapters, preventing UI components and API routes from taking a direct dependency on any specific POI provider. \\
 
 \end{longtable}
 
@@ -601,7 +601,7 @@ WanderMate is decomposed into \textbf{six primary subsystems} and one cross-cutt
 The decomposition follows three guiding principles:
 \begin{itemize}
   \item \textbf{Single Responsibility} --- each subsystem owns one cohesive slice of domain logic.
-  \item \textbf{Low Coupling / High Cohesion} --- inter-subsystem communication goes through explicit interface contracts (REST endpoints, Firebase paths, defined service APIs).
+  \item \textbf{Low Coupling / High Cohesion} --- inter-subsystem communication goes through explicit interface contracts (REST endpoints, Firebase paths, defined service APIs, Zustand store boundaries).
   \item \textbf{Replaceability} --- the POI provider, the mapping library, and the real-time infrastructure can each be replaced without restructuring other subsystems.
 \end{itemize}
 
@@ -620,42 +620,42 @@ The decomposition follows three guiding principles:
 \endfoot
 
 \textbf{Mobile Client}\newline(React Native / Expo) &
-Entry point for all user interactions. Renders the five bottom-tab screens, manages local state, hosts the Leaflet WebView, and orchestrates calls to the API Gateway and Firebase. &
-Tab navigator, Leaflet WebView, AsyncStorage cache, Redux/Context state, Firebase SDK client &
+Entry point for all user interactions. Renders the five bottom-tab screens (Trips, Explore, Feed, Budget, Profile), manages local state via Zustand stores, hosts the Leaflet WebView map, and orchestrates calls to the API Gateway and Firebase. &
+Expo Router (tabs + stack), Leaflet WebView, Zustand stores (\texttt{tripStore}, \texttt{budgetStore}, \texttt{feedStore}, \texttt{authStore}), \texttt{localCache}, \texttt{syncQueue}, Firebase SDK client, React Native Paper UI &
 API Gateway, Firebase Realtime DB, Firebase Auth \\
 
 \rowcolor{tablealtbg}
 \textbf{API Gateway}\newline(Node.js + Express) &
-Single backend entry point. Proxies and authenticates all third-party API calls, enforces rate limits, applies caching, and serves trip/user/feed data from MongoDB. Keeps all secrets server-side. &
-Express routes, JWT middleware, rate-limiter, in-memory cache, Mongoose models, Axios clients &
-Mobile Client, MongoDB, Overpass API, Google Places API, ORS \\
+Single backend entry point. Proxies and authenticates all third-party API calls, enforces rate limits, applies caching, and serves trip/user/feed/budget data from MongoDB. Keeps all secrets server-side. &
+Express routes (\texttt{trips}, \texttt{users}, \texttt{feed}, \texttt{budget}, \texttt{poi}, \texttt{routes}), Firebase JWT middleware, \texttt{express-rate-limit}, \texttt{node-cache}, Mongoose models, Helmet security headers &
+Mobile Client, MongoDB, Google Places API, ORS \\
 
 \textbf{POI \& Routing Service}\newline(TravelService Facade) &
-Encapsulates the dual-API POI strategy (Overpass + Google Places) and the ORS route optimisation call behind a single \texttt{TravelService} interface. Implements response caching and provider fallback. &
-\texttt{TravelService} class, \texttt{OverpassAdapter}, \texttt{PlacesAdapter}, \texttt{ORSAdapter}, shared response cache &
-API Gateway, Overpass API, Google Places API, ORS \\
+Encapsulates the dual-API POI strategy (Google Places as primary, ORS POI as fallback) and ORS route optimisation behind a single \texttt{TravelService} interface. Implements response caching and provider fallback. An Overpass adapter exists but is currently disabled. &
+\texttt{TravelService} class (singleton), \texttt{PlacesAdapter}, \texttt{ORSAdapter}, \texttt{overpassAdapter} (disabled), \texttt{node-cache} instance &
+API Gateway, Google Places API, ORS \\
 
 \rowcolor{tablealtbg}
 \textbf{Itinerary \& Budget Engine} &
-Manages the full lifecycle of trip documents: CRUD, drag-and-drop reordering (Command pattern, undo/redo), expense logging, split calculation, and offline sync queue. &
-\texttt{TripRepository}, \texttt{BudgetRepository}, \texttt{CommandManager}, \texttt{SyncQueue}, Firebase write listeners &
+Manages the full lifecycle of trip documents: CRUD, stop management (add, edit, remove, reorder), expense logging, split calculation, and offline sync queue. Undo/redo is implemented via command stacks in \texttt{tripStore}. &
+\texttt{Trip} model, \texttt{Expense} model, trip routes, budget routes, \texttt{tripStore} (undo/redo), \texttt{budgetStore}, \texttt{syncQueue}, Firebase write listeners &
 API Gateway, Firebase Realtime DB, AsyncStorage \\
 
 \textbf{Social Feed \& Community Service} &
-Handles trip publishing, follower graph management, like counts, feed pagination, and one-tap itinerary cloning. Publishes update events to Firebase for real-time card refresh. &
-\texttt{FeedRepository}, \texttt{CloneService}, \texttt{FollowGraph}, Firebase feed listeners, feed card components &
+Handles trip publishing, follower graph management, like/unlike toggle, feed pagination, and one-tap itinerary cloning. Publishes update events to Firebase for real-time card refresh. &
+\texttt{FeedPost} model, feed routes, \texttt{feedStore}, \texttt{User.followers[]}/\texttt{following[]} arrays, user routes (follow/unfollow/search) &
 API Gateway, Firebase Realtime DB, Itinerary Engine \\
 
 \rowcolor{tablealtbg}
 \textbf{Auth \& User Profile} &
-Manages user identity via Firebase Authentication (Google Sign-In), stores user profile data in MongoDB, and enforces Firebase Security Rules for per-trip access control. &
-Firebase Auth SDK, Google Sign-In provider, \texttt{UserRepository}, Firebase Security Rules &
-Firebase Auth, API Gateway, Firebase Realtime DB \\
+Manages user identity via Firebase Authentication (Email/Password + Google Sign-In), stores user profile data in MongoDB, and enforces per-trip access control via backend authorisation middleware. &
+Firebase Auth SDK (\texttt{firebase/auth}), \texttt{expo-auth-session} (Google OAuth), \texttt{User} model, \texttt{authStore} (Zustand), \texttt{authenticate} middleware (Firebase Admin JWT verification) &
+Firebase Auth, API Gateway, MongoDB \\
 
 \textbf{Real-time Sync Infrastructure}\newline(Firebase --- cross-cutting) &
-Cross-cutting layer providing event-driven data propagation for collaborative itinerary edits and social feed updates. All reactive subsystems register Firebase listeners rather than polling. &
-Firebase Realtime Database, Security Rules, connection-state listeners, offline queue &
-Itinerary Engine, Social Feed Service, Mobile Client \\
+Cross-cutting layer providing event-driven data propagation for collaborative itinerary edits, budget updates, and social feed events. All reactive subsystems register Firebase \texttt{onValue} listeners rather than polling. &
+Firebase Realtime Database, Firebase Admin SDK (backend write), Firebase client SDK (frontend read), connection-state listeners &
+Itinerary Engine, Budget Engine, Social Feed Service, Mobile Client \\
 
 \end{longtable}
 
@@ -665,92 +665,120 @@ Itinerary Engine, Social Feed Service, Mobile Client \\
 
 \subsubsection{Mobile Client (React Native / Expo)}
 
-The mobile client is the sole user-facing component of WanderMate. It is built with React Native using the Expo managed workflow, targeting Android. Navigation is provided by a bottom tab bar with five primary screens: \textbf{Trips}, \textbf{Explore}, \textbf{Feed}, \textbf{Budget}, and \textbf{Profile}.
+The mobile client is the sole user-facing component of WanderMate. It is built with React Native using the Expo managed workflow (SDK 54), targeting Android and web. Navigation is provided by Expo Router with a bottom tab bar containing five primary screens: \textbf{My Trips} (trips list with create/set-active actions), \textbf{Explore} (POI search + integrated map + itinerary panel via \texttt{@gorhom/bottom-sheet}), \textbf{Feed} (social feed with discover/following toggle), \textbf{Budget} (expense tracking with category breakdowns), and \textbf{Profile} (user stats, offline sync trigger, sign-out).
 
-The interactive map is rendered by embedding Leaflet inside a \texttt{WebView} component with a bidirectional JavaScript bridge for passing itinerary data in and receiving user map interactions out. AsyncStorage provides an offline-first data layer: when the device is offline the client reads from and writes to local storage, queuing mutations for server sync on reconnect. All outbound requests carry a Firebase JWT obtained at login; the API Gateway validates this token on every request.
+The interactive map is rendered by embedding Leaflet 1.9.4 inside a \texttt{WebView} component. The map uses OpenStreetMap tiles and displays numbered markers with category-coloured borders. A bidirectional JavaScript bridge passes itinerary data into the WebView and receives user interactions (pin clicks, stop selection) out via \texttt{postMessage}/\texttt{onMessage}. Route polylines from ORS are rendered as GeoJSON overlays; when ORS route data is unavailable, a dashed straight-line fallback is drawn.
+
+State management uses \textbf{Zustand} with five dedicated stores: \texttt{authStore} (Firebase auth state, profile), \texttt{tripStore} (trip CRUD, stop management, undo/redo stacks, Firebase subscription), \texttt{budgetStore} (expense CRUD, summary, Firebase subscription), \texttt{feedStore} (feed pagination, like/clone/publish), and \texttt{activeTripStore} (tracks which trip is ``active'' for the Explore screen).
+
+The \texttt{localCache} module provides an offline-first data layer using AsyncStorage: when the device is offline, stores read from cache and write mutations to the \texttt{syncQueue} for server sync on reconnect. All outbound API requests carry a Firebase JWT obtained at login via the Axios request interceptor in \texttt{services/api.ts}.
 
 \begin{tcolorbox}[notebox]
-  \textbf{Key patterns:} Observer (Firebase listeners for live updates), Command (undo/redo via CommandManager), Repository (AsyncStorage abstraction).\\[2pt]
-  \textbf{Satisfies:} FR-01 to FR-04, FR-09 to FR-11, NFR-07, NFR-13.
+  \textbf{Key patterns:} Observer (Firebase \texttt{onValue} listeners for live trip and budget updates), Command (undo/redo via \texttt{undoStack}/\texttt{redoStack} in \texttt{tripStore}), Cache-Aside (\texttt{localCache} abstraction over AsyncStorage).\\[2pt]
+  \textbf{Satisfies:} FR-01 to FR-04, FR-08 to FR-11, NFR-07, NFR-13.
 \end{tcolorbox}
 
 \subsubsection{API Gateway (Node.js + Express)}
 
-The API Gateway is the single backend service in WanderMate's architecture. Its primary architectural function is to act as a \emph{secret vault} --- all third-party API keys (Google Places, ORS) reside here as environment variables and are never transmitted to or stored on the mobile client.
+The API Gateway is the single backend service in WanderMate's architecture. Its primary architectural function is to act as a \emph{secret vault} --- all third-party API keys (Google Places, ORS) reside here as environment variables in \texttt{.env} and are never transmitted to or stored on the mobile client.
 
-In addition to secret management, the gateway performs: Firebase JWT verification via middleware, per-user rate limiting on external API proxying, an in-memory (or Redis) cache pass to reduce duplicate outbound calls, and CRUD REST endpoints for trips, users, expenses, and feed posts backed by MongoDB (Mongoose ODM). The gateway is stateless and horizontally scalable behind a load balancer.
+In addition to secret management, the gateway performs: Firebase JWT verification via custom \texttt{authenticate} middleware (using Firebase Admin SDK's \texttt{verifyIdToken}), per-user rate limiting via \texttt{express-rate-limit} (100 general requests per 15 minutes, 50 external API requests per hour), a \texttt{node-cache} in-memory cache with configurable TTLs to reduce duplicate outbound calls, Helmet security headers on all responses, and CRUD REST endpoints for six resource types backed by MongoDB via Mongoose ODM:
+
+\begin{itemize}
+  \item \texttt{/api/trips} --- trip CRUD, stop management, collaborator management
+  \item \texttt{/api/budget} --- expense CRUD, budget summaries with split calculation
+  \item \texttt{/api/feed} --- feed pagination, publish, like/unlike, clone
+  \item \texttt{/api/users} --- profile CRUD, follow/unfollow, user search
+  \item \texttt{/api/poi} --- POI search and category browsing (proxied via TravelService)
+  \item \texttt{/api/routes} --- route calculation and optimisation (proxied via TravelService)
+\end{itemize}
+
+A global error handler ensures structured JSON error responses for all failure scenarios (NFR-09), and a 404 handler catches undefined endpoints.
 
 \begin{tcolorbox}[notebox]
-  \textbf{Key patterns:} Facade (single entry point abstracting all third-party APIs), Repository (Mongoose models).\\[2pt]
+  \textbf{Key patterns:} Facade (single entry point abstracting all third-party APIs), Singleton (TravelService instance).\\[2pt]
   \textbf{Satisfies:} NFR-04, NFR-09, NFR-10, NFR-11.
 \end{tcolorbox}
 
 \subsubsection{POI \& Routing Service (TravelService Facade)}
 
-This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} exposes three methods to the gateway layer: \texttt{searchPOI(query, category)}, \texttt{getPlaceDetails(placeId)}, and \texttt{getRoute(waypoints)}. Internally, three adapters implement a shared \texttt{IPoiAdapter} interface:
+This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes four methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, and \texttt{getRoute(coordinates, profile)}. Internally, two active adapters implement provider-specific API logic:
 
 \begin{itemize}
-  \item \textbf{OverpassAdapter} --- queries the Overpass API for OpenStreetMap data (free, unlimited, used for search).
-  \item \textbf{PlacesAdapter} --- enriches search results with Google Places ratings, photos, and opening hours (quota-sensitive: 5\,000 req/month).
-  \item \textbf{ORSAdapter} --- requests optimised multi-stop routes from OpenRouteService (2\,000 req/day).
+  \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Quota-sensitive: 5\,000 req/month on free tier.
+  \item \textbf{ORSAdapter} --- dual-purpose adapter serving both as a POI fallback (via the ORS \texttt{/pois} endpoint, limited to 2\,000m radius) and as the routing engine (via \texttt{/v2/directions} for route calculation and \texttt{/optimization} for multi-stop visit-order optimisation using the VROOM solver).
+  \item \textbf{OverpassAdapter} --- an OpenStreetMap data provider querying the Overpass API. The adapter is \emph{implemented but currently disabled} (entire file commented out). It can be re-enabled by uncommenting and importing it in \texttt{TravelService}, satisfying NFR-15.
 \end{itemize}
 
-A shared response cache sits in front of all three adapters. If Google Places is unavailable at runtime, \texttt{TravelService} falls back to returning Overpass-only results, satisfying NFR-08 without any change to the calling code.
+A shared \texttt{node-cache} instance sits in front of all adapter methods. Cache TTLs are: 30 minutes for search results, 24 hours for place details, and 1 hour for route calculations. If Google Places is unavailable at runtime, \texttt{TravelService} falls back to returning ORS POI results, satisfying NFR-08 without any change to the calling code.
 
 \begin{tcolorbox}[notebox]
-  \textbf{Key patterns:} Facade (\texttt{TravelService} wraps three APIs), Strategy (swappable \texttt{IPoiAdapter} implementations).\\[2pt]
+  \textbf{Key patterns:} Facade (\texttt{TravelService} wraps multiple APIs behind a single interface), Strategy (swappable adapter implementations with a common normalised output format), Singleton (single \texttt{TravelService} instance shared across all routes).\\[2pt]
   \textbf{Satisfies:} FR-05 to FR-08, FR-09 to FR-11, NFR-01, NFR-06, NFR-08, NFR-15.
 \end{tcolorbox}
 
 \subsubsection{Itinerary \& Budget Engine}
 
-This subsystem owns the core domain logic of WanderMate. \texttt{TripRepository} and \texttt{BudgetRepository} abstract MongoDB document access from the business layer, implementing the \textbf{Repository} pattern so that the storage backend can be replaced independently of business rules.
+This subsystem owns the core domain logic of WanderMate. On the backend, the \texttt{Trip} Mongoose model defines a nested document structure: trips contain a \texttt{days[]} array, each day containing a \texttt{stops[]} array with fields for name, coordinates, category, order, notes, arrival time, duration, cost, and optional links to expense records. The \texttt{Expense} model stores expense records in a separate collection, referenced by trip ObjectId.
 
-All itinerary mutations (add stop, remove day, reorder stop) are modelled as \textbf{Command} objects with \texttt{execute()} and \texttt{undo()} methods. A \texttt{CommandManager} maintains an ordered stack, enabling multi-level undo/redo without bespoke state management in the UI layer (satisfies FR-04).
+Backend routes implement full trip lifecycle management: create (with auto-generated days array), read (with owner/collaborator authorisation), update, delete (owner-only), add stop, update stop, remove stop, reorder stops, and add collaborator. Every mutation writes an update event to Firebase Realtime Database at \texttt{trips/\{tripId\}} for real-time sync.
 
-A \texttt{SyncQueue} persists unsent mutations to AsyncStorage when the device is offline and flushes them in timestamp order on reconnect. Collaborative edits are broadcast through Firebase Realtime Database; this subsystem both writes change events to Firebase on local mutation and subscribes to remote events via \texttt{onValue} listeners, implementing the \textbf{Observer} pattern.
+On the frontend, \texttt{tripStore} (Zustand) manages all trip state and implements the \textbf{Command} pattern for undo/redo. Every mutation (add stop, remove stop, reorder, update trip) pushes a command object onto the \texttt{undoStack} containing the mutation type, associated data, and the previous trip state. Undo restores the previous state via an API call; redo re-applies the undone operation. The \texttt{redoStack} is cleared whenever a new mutation is performed.
+
+The \texttt{budgetStore} manages expense state and subscribes to Firebase \texttt{budgets/\{tripId\}/lastUpdate} for real-time budget sync across collaborators. Budget summaries (total, per-category, per-day, per-person split) are computed server-side in the \texttt{GET /api/budget/:tripId} endpoint.
+
+A \texttt{syncQueue} persists unsent mutations to AsyncStorage when the device is offline and flushes them in timestamp order on reconnect. The Profile screen provides a manual ``Sync Offline Changes'' action.
 
 \begin{tcolorbox}[notebox]
-  \textbf{Key patterns:} Repository, Command (undo/redo), Observer (Firebase listeners).\\[2pt]
+  \textbf{Key patterns:} Command (undo/redo stacks in \texttt{tripStore}), Observer (Firebase \texttt{onValue} listeners for both trip and budget updates), Cache-Aside (\texttt{localCache} for offline reads).\\[2pt]
   \textbf{Satisfies:} FR-01 to FR-04, FR-12 to FR-15, FR-20 to FR-21, NFR-03, NFR-07.
 \end{tcolorbox}
 
 \subsubsection{Social Feed \& Community Service}
 
-The social feed subsystem manages the public layer of WanderMate. When a user publishes a trip, \texttt{PublishService} serialises a feed post (route thumbnail, metadata snapshot, and a read-only copy of the itinerary) and writes it atomically to both MongoDB (as the authoritative document) and Firebase Realtime Database (to broadcast to follower feed listeners). This dual-write ensures feed cards appear in real time on all connected followers' screens without polling.
+The social feed subsystem manages the public layer of WanderMate. When a user publishes a trip, the \texttt{POST /api/feed/publish/:tripId} endpoint creates a \texttt{FeedPost} document containing denormalised metadata: author name and avatar, trip name, destination, cover image, date range, duration, participant count, total budget (summed from expenses), and stop count. This denormalised snapshot approach ensures feed card rendering is independent of trip mutations. The trip is marked as published (\texttt{isPublished: true}) and added to the user's \texttt{publishedTrips[]} array. A Firebase event is written to \texttt{feed/\{postId\}} for real-time propagation.
 
-\texttt{CloneService} performs a deep copy of a published trip document, reassigns the cloning user as the new owner, clears the \texttt{published} flag, and writes the copy as a new MongoDB document in a single atomic operation. This prevents partial clones in the event of a mid-operation failure and ensures the cloned trip is immediately editable (satisfies FR-19).
+The feed endpoint supports pagination via \texttt{skip/limit} with two modes: ``Discover'' (all posts sorted by \texttt{createdAt}) and ``Following'' (posts by followed users only). The \texttt{feedStore} on the client manages pagination state and implements infinite scroll via \texttt{onEndReached}.
 
-The follower graph (\texttt{FollowGraph}) is stored as an adjacency list in MongoDB, with denormalised display names and avatar URLs cached in Firebase for fast feed card rendering.
+Like/unlike is implemented as a toggle: the \texttt{POST /api/feed/:postId/like} endpoint adds or removes the user's UID from the \texttt{likes[]} array and updates the denormalised \texttt{likeCount}.
+
+The \texttt{POST /api/feed/:postId/clone} endpoint performs a deep copy of the original trip document: it copies all \texttt{days[]} and their \texttt{stops[]} subdocuments, assigns the cloning user as the new owner, clears the \texttt{isPublished} flag, resets collaborators, and writes the new trip atomically. This prevents partial clones and ensures the cloned trip is immediately editable (satisfies FR-19).
+
+The follower graph is stored as adjacency lists in the \texttt{User} model: \texttt{followers[]} and \texttt{following[]} arrays of Firebase UIDs. Follow, unfollow, and user search endpoints are provided in the users route module.
 
 \begin{tcolorbox}[notebox]
-  \textbf{Key patterns:} Observer (Firebase feed listeners), Repository (\texttt{FeedRepository}).\\[2pt]
+  \textbf{Key patterns:} Observer (Firebase feed event broadcasting), Snapshot (denormalised feed post data for independent rendering).\\[2pt]
   \textbf{Satisfies:} FR-16 to FR-19, NFR-02, NFR-03.
 \end{tcolorbox}
 
 \subsubsection{Authentication \& User Profile}
 
-Identity management is delegated entirely to Firebase Authentication, using the Google Sign-In OAuth 2.0 provider. On first successful sign-in, the API Gateway creates a corresponding \texttt{User} document in MongoDB containing the user's display name, avatar URL, follower/following ID lists, and references to their published trips.
+Identity management is handled by Firebase Authentication, supporting two providers: \textbf{Email/Password} (registration with display name, sign-in) and \textbf{Google Sign-In} (OAuth 2.0 via \texttt{expo-auth-session} on native, \texttt{signInWithPopup} on web). On native platforms, auth state persistence across app restarts is achieved via \texttt{getReactNativePersistence(AsyncStorage)} (satisfies FR-23).
 
-Firebase Security Rules are configured to match trip document ownership and the \texttt{collaborators} array, ensuring that only the owner and explicitly authorised collaborators can read or write sensitive trip data in Firebase Realtime Database (satisfies NFR-12). Profile updates flow through the API Gateway to MongoDB; display name and avatar URL are also denormalised into Firebase to avoid expensive joins at feed card render time.
+On first successful sign-in (via either method), the API Gateway's \texttt{GET /api/users/me} endpoint creates a corresponding \texttt{User} document in MongoDB containing the user's Firebase UID, email, display name, avatar URL, follower/following ID lists, and references to published trips. The \texttt{authStore} initialises a Firebase \texttt{onAuthStateChanged} listener on app startup to track the authentication state and automatically fetch the user profile.
+
+Backend authorisation is enforced by the \texttt{authenticate} middleware, which verifies Firebase ID tokens on every API request using the Firebase Admin SDK's \texttt{verifyIdToken} method. Per-trip access control is additionally enforced in each route handler by checking the requesting user's UID against the trip's \texttt{owner} and \texttt{collaborators[]} fields.
 
 \begin{tcolorbox}[notebox]
-  \textbf{Key patterns:} Repository (\texttt{UserRepository}).\\[2pt]
+  \textbf{Key patterns:} Observer (\texttt{onAuthStateChanged} listener in \texttt{authStore}), Singleton (Firebase app initialisation).\\[2pt]
   \textbf{Satisfies:} FR-22, FR-23, NFR-10, NFR-11, NFR-12.
 \end{tcolorbox}
 
 \subsubsection{Real-time Sync Infrastructure (Firebase --- Cross-cutting)}
 
-Firebase Realtime Database serves as the event bus for WanderMate's two real-time channels:
+Firebase Realtime Database serves as the event bus for WanderMate's three real-time channels:
 \begin{itemize}
-  \item \textbf{Collaborative itinerary editing} --- changes by any collaborator are written to a dedicated Firebase path and broadcast to all listeners within 500\,ms (NFR-03).
-  \item \textbf{Social feed updates} --- new published posts are written to a \texttt{/feed/\{userId\}} path; followers register \texttt{onChildAdded} listeners for real-time card injection.
+  \item \textbf{Collaborative itinerary editing} --- every trip mutation via the API Gateway writes an update event to \texttt{trips/\{tripId\}} in Firebase (containing \texttt{updatedAt} and \texttt{lastEditedBy}). All connected clients register \texttt{onValue} listeners via \texttt{tripStore.subscribeTripUpdates()}, which triggers a re-fetch of the authoritative trip state from MongoDB.
+  \item \textbf{Budget synchronisation} --- expense mutations write to \texttt{budgets/\{tripId\}/lastUpdate}. The \texttt{budgetStore.subscribeBudgetUpdates()} listener triggers a budget re-fetch on any change.
+  \item \textbf{Social feed updates} --- new published posts are written to a \texttt{feed/\{postId\}} path for real-time propagation.
 \end{itemize}
 
-This layer is intentionally kept thin. It carries events and deltas only; full document state remains authoritative in MongoDB. This architectural decision prevents Firebase from becoming a second source of truth for complex relational queries (follower graphs, expense aggregations), which it is not optimised for. Firebase's managed connection pooling, automatic reconnection, and built-in offline queue remove the need for a custom WebSocket server.
+This layer is intentionally kept thin. It carries events and deltas only; full document state remains authoritative in MongoDB. This architectural decision prevents Firebase from becoming a second source of truth for complex relational queries (follower graphs, expense aggregations), which it is not optimised for. Firebase's built-in offline queue and automatic reconnection complement the client-side \texttt{syncQueue} to provide robust offline-to-online transitions.
+
+On the backend, Firebase is accessed via the Firebase Admin SDK (initialised as a singleton in \texttt{config/firebase.js}). On the frontend, the Firebase client SDK is initialised in \texttt{config/firebase.ts} with AsyncStorage-backed auth persistence.
 
 \begin{tcolorbox}[notebox]
-  \textbf{Key patterns:} Observer (all reactive subsystems attach Firebase listeners).\\[2pt]
+  \textbf{Key patterns:} Observer (all reactive subsystems attach Firebase \texttt{onValue} listeners), Event Bus (Firebase paths act as named event channels).\\[2pt]
   \textbf{Satisfies:} FR-15, FR-20, FR-21, NFR-03, NFR-07.
 \end{tcolorbox}
 
@@ -771,21 +799,21 @@ The following five runtime data flows describe how subsystems collaborate to del
 \endfoot
 
 1 & POI \& Route Query &
-Mobile Client $\rightarrow$ API Gateway (HTTPS + JWT) $\rightarrow$ TravelService Facade checks cache; on miss, calls OverpassAdapter (search) + PlacesAdapter (enrich) $\rightarrow$ cached result returned to client $\rightarrow$ ORSAdapter computes route polyline $\rightarrow$ Leaflet WebView renders map overlay. \\
+Mobile Client (Explore screen) $\rightarrow$ API Gateway \texttt{/api/poi/search} (HTTPS + JWT) $\rightarrow$ TravelService Facade checks \texttt{node-cache}; on miss, calls PlacesAdapter (Google Places Text Search); on empty results, falls back to ORSAdapter POI search $\rightarrow$ cached and returned to client $\rightarrow$ user taps ``Add to Trip'' $\rightarrow$ \texttt{tripStore.addStop()} calls \texttt{/api/trips/:id/days/:dayIndex/stops} $\rightarrow$ route auto-computed via \texttt{/api/routes/optimize} (ORS Optimization API) $\rightarrow$ Leaflet WebView renders route polyline and numbered stop markers. \\
 
 \rowcolor{tablealtbg}
 2 & Collaborative Edit &
-Collaborator A edits stop on Mobile Client $\rightarrow$ Itinerary Engine executes Command, writes delta to MongoDB via API Gateway, and simultaneously writes event to Firebase $\rightarrow$ Firebase broadcasts to all registered listeners $\rightarrow$ Collaborator B's Mobile Client receives update and re-renders itinerary. \\
+Collaborator A edits a stop on Mobile Client $\rightarrow$ \texttt{tripStore} calls API Gateway, which updates the Trip document in MongoDB and writes \texttt{\{updatedAt, lastEditedBy\}} to Firebase \texttt{trips/\{tripId\}} $\rightarrow$ Firebase broadcasts to all registered \texttt{onValue} listeners $\rightarrow$ Collaborator B's \texttt{tripStore} receives the event and re-fetches the trip from MongoDB via the API $\rightarrow$ UI re-renders with updated data. \\
 
 3 & Feed Publish &
-User taps \textit{Publish} $\rightarrow$ Social Feed Service serialises feed post, writes atomically to MongoDB + Firebase \texttt{/feed/} path $\rightarrow$ Firebase propagates \texttt{onChildAdded} event to all follower clients $\rightarrow$ feed cards update in real time without polling. \\
+User taps ``Publish'' in Trip Detail screen $\rightarrow$ \texttt{feedStore.publishTrip()} calls \texttt{POST /api/feed/publish/:tripId} $\rightarrow$ backend creates \texttt{FeedPost} document with denormalised metadata, marks trip as published, adds to user's \texttt{publishedTrips[]}, writes event to Firebase \texttt{feed/\{postId\}} $\rightarrow$ feed cards appear for all users on next feed fetch; followers receive real-time notification through Firebase. \\
 
 \rowcolor{tablealtbg}
 4 & Itinerary Clone &
-User taps \textit{Clone} on a feed card $\rightarrow$ CloneService deep-copies trip document in MongoDB, assigns new owner, clears \texttt{published} flag, commits atomically $\rightarrow$ new trip appears in user's Trips tab immediately. \\
+User taps ``Clone Trip'' on a feed card $\rightarrow$ \texttt{feedStore.cloneTrip()} calls \texttt{POST /api/feed/:postId/clone} $\rightarrow$ backend deep-copies the original trip's \texttt{days[]} and \texttt{stops[]}, assigns new owner, clears \texttt{isPublished} flag, saves new Trip document atomically, syncs to Firebase $\rightarrow$ new trip appears in user's Trips tab immediately. \\
 
 5 & Offline Sync &
-Device goes offline $\rightarrow$ Itinerary Engine routes mutations to AsyncStorage SyncQueue $\rightarrow$ device reconnects $\rightarrow$ SyncQueue flushes ordered mutations to API Gateway $\rightarrow$ MongoDB updated $\rightarrow$ Firebase receives resolved state $\rightarrow$ remote collaborators' views converge. \\
+Device goes offline $\rightarrow$ \texttt{tripStore} mutations fail API call, fall back to \texttt{localCache} for reads and queue mutations in \texttt{syncQueue} (AsyncStorage) $\rightarrow$ device reconnects $\rightarrow$ user triggers ``Sync Offline Changes'' from Profile screen (or \texttt{syncQueue.flush()} is called) $\rightarrow$ queued mutations are replayed in timestamp order to the API Gateway $\rightarrow$ MongoDB updated $\rightarrow$ Firebase receives resolved state $\rightarrow$ remote collaborators' views converge. \\
 
 \end{longtable}
 \end{document}
