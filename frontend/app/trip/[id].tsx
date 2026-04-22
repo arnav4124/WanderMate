@@ -207,10 +207,29 @@ export default function TripDetailScreen() {
                                 <Text variant="bodySmall" style={{ marginLeft: 2, fontSize: 11 }}>{item.rating}</Text>
                             </View>
                         )}
-                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize', fontSize: 11 }}>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize', fontSize: 11, marginRight: 8 }}>
                             {item.category}
                         </Text>
                     </View>
+                    {(item.arrivalTime || item.duration || item.cost) && (
+                        <View style={[styles.stopMeta, { marginTop: 4 }]}>
+                            {item.arrivalTime && (
+                                <Text variant="bodySmall" style={{ color: theme.colors.primary, fontSize: 11, marginRight: 8, fontWeight: '600' }}>
+                                    🕒 {item.arrivalTime}
+                                </Text>
+                            )}
+                            {item.duration && (
+                                <Text variant="bodySmall" style={{ color: theme.colors.primary, fontSize: 11, marginRight: 8, fontWeight: '600' }}>
+                                    ⏳ {item.duration} mins
+                                </Text>
+                            )}
+                            {item.cost && (
+                                <Text variant="bodySmall" style={{ color: '#4CAF50', fontSize: 11, fontWeight: '600' }}>
+                                    💰 ${item.cost}
+                                </Text>
+                            )}
+                        </View>
+                    )}
                 </View>
                 <View style={styles.stopActions}>
                     <IconButton icon="drag" size={18} style={{ opacity: 0.5 }} />

@@ -8,7 +8,10 @@ const stopSchema = new mongoose.Schema({
     category: { type: String, enum: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'other'], default: 'other' },
     notes: String,
     order: { type: Number, required: true },
+    arrivalTime: String,
     duration: Number, // minutes
+    cost: Number,
+    expenseId: String,
     address: String,
     rating: Number,
     photo: String,

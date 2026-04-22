@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, FlatList, Linking, RefreshControl, Platform, TouchableOpacity } from 'react-native';
-import { Text, Searchbar, Chip, Card, useTheme, Button, Surface, ActivityIndicator, IconButton, Portal, Snackbar } from 'react-native-paper';
+import { Text, Searchbar, Chip, Card, useTheme, Button, Surface, ActivityIndicator, IconButton, Portal, Snackbar, TextInput } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { WebView } from 'react-native-webview';
@@ -9,7 +9,8 @@ import { useRouter, useNavigation } from 'expo-router';
 
 import api from '@/services/api';
 import { POI, Day } from '@/types';
-import { useTripStore } from '@/stores/tripStore';
+import { useTripStore } from '@/stores/tripStore'
+import { useBudgetStore } from '@/stores/budgetStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useActiveTripStore } from '@/stores/activeTripStore';
 import { CategoryColors, CategoryIcons } from '@/constants/theme';
@@ -20,7 +21,8 @@ export default function ExploreScreenV2() {
     const theme = useTheme();
     const router = useRouter();
     const navigation = useNavigation();
-    const { trips, fetchTrips, addStop, updateTrip, removeStop, reorderStops } = useTripStore();
+    const { trips, fetchTrips, addStop, updateTrip, removeStop, reorderStops, updateStop } = useTripStore();
+    const { addExpense, updateExpense } = useBudgetStore();
     const { activeTripId, activeDayIndex, setActiveDay } = useActiveTripStore();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
@@ -36,6 +38,12 @@ export default function ExploreScreenV2() {
 
     const [routeData, setRouteData] = useState<any>(null);
     const [loadingRoute, setLoadingRoute] = useState(false);
+
+    const [expandedStopId, setExpandedStopId] = useState<string | null>(null);
+    const [editTime, setEditTime] = useState('');
+    const [editDuration, setEditDuration] = useState('');
+    const [editCost, setEditCost] = useState('');
+    const [editNotes, setEditNotes] = useState('');
 
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -221,13 +229,13 @@ export default function ExploreScreenV2() {
         if (lastDay) {
             newDate.setDate(newDate.getDate() + 1);
         }
-        
+
         const newDay: Day = {
             dayNumber: newDayNumber,
             date: newDate.toISOString(),
             stops: []
         };
-        
+
         const newDays = [...activeTrip.days, newDay];
         await updateTrip(activeTrip._id, { days: newDays });
         showMessage(`Day ${newDayNumber} added`);
@@ -263,15 +271,77 @@ export default function ExploreScreenV2() {
         } else {
             return;
         }
-        const stopOrder = stops.map(s => s._id);
+        const stopOrder = stops.map(s => s._id!);
         await reorderStops(activeTrip._id, activeDayIndex, stopOrder);
+    };
+
+    const handleExpandStop = (stop: Stop) => {
+        if (expandedStopId === stop._id) {
+            setExpandedStopId(null);
+        } else {
+            setExpandedStopId(stop._id || null);
+            setEditTime(stop.arrivalTime || '');
+            setEditDuration(stop.duration ? stop.duration.toString() : '');
+            setEditCost(stop.cost ? stop.cost.toString() : '');
+            setEditNotes(stop.notes || '');
+        }
+    };
+
+    const handleSaveStopDetails = async (stop: Stop) => {
+        if (!activeTrip) return;
+
+        let newExpenseId = stop.expenseId;
+        const parsedCost = parseFloat(editCost);
+
+        if (!isNaN(parsedCost) && parsedCost > 0) {
+            const expenseCategoryMapping: Record<string, 'accommodation' | 'food' | 'transport' | 'activities' | 'other'> = {
+                hotel: 'accommodation',
+                restaurant: 'food',
+                transport: 'transport',
+                activity: 'activities',
+                landmark: 'activities',
+                other: 'other',
+            };
+            const expCat = expenseCategoryMapping[stop.category] || 'other';
+
+            const expenseData = {
+                description: stop.name,
+                amount: parsedCost,
+                category: expCat,
+                date: activeTrip.days[activeDayIndex].date,
+                dayNumber: activeTrip.days[activeDayIndex].dayNumber,
+            };
+
+            if (newExpenseId) {
+                await updateExpense(activeTrip._id, newExpenseId, expenseData);
+            } else {
+                const newExpense = await addExpense(activeTrip._id, expenseData);
+                if (newExpense) {
+                    newExpenseId = newExpense._id;
+                }
+            }
+        }
+
+        const updates: Partial<Stop> = {
+            arrivalTime: editTime,
+            duration: editDuration ? parseInt(editDuration) : undefined,
+            cost: !isNaN(parsedCost) ? parsedCost : undefined,
+            notes: editNotes,
+            expenseId: newExpenseId,
+        };
+
+        if (stop._id) {
+            await updateStop(activeTrip._id, activeDayIndex, stop._id, updates);
+        }
+        showMessage('Stop details saved');
+        setExpandedStopId(null);
     };
 
     const handleDeleteDay = async () => {
         if (!activeTrip) return;
         const currentDay = activeTrip.days[activeDayIndex];
         if (currentDay.stops.length > 0) return; // Only delete empty days
-        
+
         const newDays = activeTrip.days.filter((_, idx) => idx !== activeDayIndex).map((d, idx) => ({
             ...d,
             dayNumber: idx + 1 // Re-number subsequent days
@@ -426,20 +496,20 @@ export default function ExploreScreenV2() {
         
         // Render stops (strictly sorted by order)
         var stops = ${JSON.stringify([...(activeTrip?.days[activeDayIndex]?.stops || [])].sort((a, b) => a.order - b.order).map((s, i) => ({
-            id: s._id,
-            placeId: s.placeId,
-            lat: s.lat,
-            lng: s.lng,
-            name: s.name,
-            category: s.category,
-            photo: s.photo,
-            rating: s.rating,
-            address: s.address,
-            openingHours: s.openingHours,
-            priceLevel: s.priceLevel,
-            order: i + 1,
-            color: CategoryColors[s.category] || '#95E1D3',
-        })))};
+        id: s._id,
+        placeId: s.placeId,
+        lat: s.lat,
+        lng: s.lng,
+        name: s.name,
+        category: s.category,
+        photo: s.photo,
+        rating: s.rating,
+        address: s.address,
+        openingHours: s.openingHours,
+        priceLevel: s.priceLevel,
+        order: i + 1,
+        color: CategoryColors[s.category] || '#95E1D3',
+    })))};
 
         stops.forEach(function(stop) {
             var icon = L.divIcon({
@@ -480,12 +550,12 @@ export default function ExploreScreenV2() {
 
         // Add selected POI if it exists
         var selectedPOI = ${selectedPOI ? JSON.stringify({
-            id: selectedPOI.id,
-            lat: selectedPOI.lat,
-            lng: selectedPOI.lng,
-            name: selectedPOI.name,
-            color: CategoryColors[selectedPOI.category] || '#FF5722'
-        }) : 'null'};
+        id: selectedPOI.id,
+        lat: selectedPOI.lat,
+        lng: selectedPOI.lng,
+        name: selectedPOI.name,
+        color: CategoryColors[selectedPOI.category] || '#FF5722'
+    }) : 'null'};
 
         if (selectedPOI) {
             var icon = L.divIcon({
@@ -537,12 +607,13 @@ export default function ExploreScreenV2() {
                             onChangeText={setQuery}
                             onSubmitEditing={searchPOI}
                             style={[styles.searchbar, { backgroundColor: theme.colors.surfaceVariant, flex: 1 }]}
-                            inputStyle={{ fontSize: 15 }}
+                            inputStyle={{ fontSize: 15, minHeight: 0, paddingVertical: 0, alignSelf: 'center', marginTop: -2 }}
                         />
                         <IconButton
                             icon={mode === 'list' ? 'map' : 'format-list-bulleted'}
                             mode="contained-tonal"
                             size={24}
+                            style={{ margin: 0, height: 48, width: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}
                             onPress={() => setMode(mode === 'list' ? 'map' : 'list')}
                         />
                     </View>
@@ -697,7 +768,7 @@ export default function ExploreScreenV2() {
                             Edit Trip
                         </Button>
                     </BottomSheetView>
-                    
+
                     <View style={[styles.dayTabs, { backgroundColor: theme.colors.surface }]}>
                         <BottomSheetFlatList
                             horizontal
@@ -733,51 +804,106 @@ export default function ExploreScreenV2() {
                         keyExtractor={(item, index) => item._id || index.toString()}
                         contentContainerStyle={styles.sheetList}
                         renderItem={({ item, index }) => (
-                            <View style={styles.stopItem}>
-                                <TouchableOpacity 
-                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }} 
-                                    onPress={() => handleStopPress(item)}
-                                >
-                                    <View style={[styles.stopNumber, { backgroundColor: CategoryColors[item.category] || theme.colors.primary }]}>
-                                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text variant="bodyMedium" style={{ fontWeight: '600' }} numberOfLines={1}>{item.name}</Text>
-                                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize' }}>{item.category}</Text>
-                                    </View>
-                                </TouchableOpacity>
-                                <View style={styles.stopControls}>
-                                    <View style={styles.moveButtons}>
-                                        <IconButton 
-                                            icon="chevron-up" 
-                                            size={16} 
-                                            disabled={index === 0} 
-                                            onPress={() => moveStop(index, 'up')} 
-                                            style={styles.tightIcon} 
+                            <View style={styles.stopItemContainer}>
+                                <View style={styles.stopItem}>
+                                    <TouchableOpacity
+                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
+                                        onPress={() => handleStopPress(item)}
+                                    >
+                                        <View style={[styles.stopNumber, { backgroundColor: CategoryColors[item.category] || theme.colors.primary }]}>
+                                            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text variant="bodyMedium" style={{ fontWeight: '600' }} numberOfLines={1}>{item.name}</Text>
+                                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize' }}>{item.category}</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                    <View style={styles.stopControls}>
+                                        <IconButton
+                                            icon={expandedStopId === item._id ? "chevron-up" : "chevron-down"}
+                                            size={20}
+                                            onPress={() => handleExpandStop(item)}
+                                            style={{ margin: 0, marginRight: -4 }}
                                         />
-                                        <IconButton 
-                                            icon="chevron-down" 
-                                            size={16} 
-                                            disabled={index === (activeTrip.days[activeDayIndex]?.stops.length - 1)} 
-                                            onPress={() => moveStop(index, 'down')} 
-                                            style={styles.tightIcon} 
+                                        <View style={styles.moveButtons}>
+                                            <IconButton
+                                                icon="menu-up"
+                                                size={20}
+                                                disabled={index === 0}
+                                                onPress={() => moveStop(index, 'up')}
+                                                style={styles.tightIcon}
+                                            />
+                                            <IconButton
+                                                icon="menu-down"
+                                                size={20}
+                                                disabled={index === (activeTrip.days[activeDayIndex]?.stops.length - 1)}
+                                                onPress={() => moveStop(index, 'down')}
+                                                style={styles.tightIcon}
+                                            />
+                                        </View>
+                                        <IconButton
+                                            icon="delete-outline"
+                                            iconColor={theme.colors.error}
+                                            size={20}
+                                            onPress={() => item._id && removeStop(activeTrip._id, activeDayIndex, item._id)}
+                                            style={{ margin: 0 }}
                                         />
                                     </View>
-                                    <IconButton 
-                                        icon="delete-outline" 
-                                        iconColor={theme.colors.error}
-                                        size={20} 
-                                        onPress={() => removeStop(activeTrip._id, activeDayIndex, item._id)} 
-                                    />
                                 </View>
+                                {expandedStopId === item._id && (
+                                    <View style={styles.expandedContent}>
+                                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                                            <TextInput
+                                                label="Arrival (e.g. 10:00 AM)"
+                                                value={editTime}
+                                                onChangeText={setEditTime}
+                                                mode="outlined"
+                                                style={{ flex: 1, backgroundColor: theme.colors.surface }}
+                                                dense
+                                            />
+                                            <TextInput
+                                                label="Duration (mins)"
+                                                value={editDuration}
+                                                onChangeText={setEditDuration}
+                                                keyboardType="numeric"
+                                                mode="outlined"
+                                                style={{ flex: 1, backgroundColor: theme.colors.surface }}
+                                                dense
+                                            />
+                                        </View>
+                                        <TextInput
+                                            label="Estimated Cost ($)"
+                                            value={editCost}
+                                            onChangeText={setEditCost}
+                                            keyboardType="decimal-pad"
+                                            mode="outlined"
+                                            style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
+                                            dense
+                                        />
+                                        <TextInput
+                                            label="Notes (Optional)"
+                                            value={editNotes}
+                                            onChangeText={setEditNotes}
+                                            mode="outlined"
+                                            multiline
+                                            numberOfLines={2}
+                                            style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
+                                            dense
+                                        />
+                                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+                                            <Button mode="text" onPress={() => setExpandedStopId(null)}>Cancel</Button>
+                                            <Button mode="contained" onPress={() => handleSaveStopDetails(item)}>Save Details</Button>
+                                        </View>
+                                    </View>
+                                )}
                             </View>
                         )}
                         ListEmptyComponent={
                             <View style={styles.emptyStops}>
                                 <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>No stops for this day yet.</Text>
-                                <Button 
-                                    mode="text" 
-                                    icon="delete" 
+                                <Button
+                                    mode="text"
+                                    icon="delete"
                                     textColor={theme.colors.error}
                                     onPress={handleDeleteDay}
                                     style={{ marginTop: 12 }}
@@ -807,7 +933,7 @@ const styles = StyleSheet.create({
     header: { paddingBottom: 12, borderBottomWidth: 1, zIndex: 10 },
     activeTripBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 6, marginBottom: 8 },
     searchSection: { paddingHorizontal: 16, gap: 12 },
-    searchbar: { borderRadius: 12, elevation: 0, height: 48 },
+    searchbar: { borderRadius: 12, elevation: 0, height: 48, justifyContent: 'center' },
     categoryRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
     catChip: { borderRadius: 20 },
     content: { flex: 1 },
@@ -822,15 +948,17 @@ const styles = StyleSheet.create({
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     emptyContainer: { alignItems: 'center', paddingTop: 60 },
     miniCardContainer: { position: 'absolute', bottom: 100, left: 16, right: 16, zIndex: 20 },
-    
+
     // Bottom Sheet styles
     sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8 },
     dayTabs: { paddingHorizontal: 16, paddingBottom: 16 },
     sheetList: { paddingHorizontal: 16, paddingBottom: 24 },
-    stopItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ccc' },
+    stopItemContainer: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ccc' },
+    stopItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+    expandedContent: { paddingLeft: 48, paddingRight: 16, paddingBottom: 16 },
     stopNumber: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
     stopControls: { flexDirection: 'row', alignItems: 'center' },
-    moveButtons: { flexDirection: 'column', marginRight: -12 },
-    tightIcon: { margin: -4, width: 24, height: 24 },
+    moveButtons: { flexDirection: 'column', marginRight: -8 },
+    tightIcon: { margin: -6, width: 24, height: 24 },
     emptyStops: { padding: 24, alignItems: 'center' },
 });

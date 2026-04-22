@@ -218,6 +218,45 @@ router.put('/:id/days/:dayIndex/reorder', async (req, res) => {
     }
 });
 
+// PUT /api/trips/:id/days/:dayIndex/stops/:stopId - Update a stop
+router.put('/:id/days/:dayIndex/stops/:stopId', async (req, res) => {
+    try {
+        const trip = await Trip.findById(req.params.id);
+        if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+        if (trip.owner !== req.user.uid && !trip.collaborators.includes(req.user.uid)) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const dayIndex = parseInt(req.params.dayIndex);
+        if (dayIndex < 0 || dayIndex >= trip.days.length) {
+            return res.status(400).json({ error: 'Invalid day index' });
+        }
+
+        const stop = trip.days[dayIndex].stops.id(req.params.stopId);
+        if (!stop) {
+            return res.status(404).json({ error: 'Stop not found' });
+        }
+
+        const updates = req.body;
+        // Don't allow changing the order this way
+        delete updates.order;
+        
+        Object.assign(stop, updates);
+        await trip.save();
+
+        await firebaseDB.ref(`trips/${trip._id}`).update({
+            updatedAt: Date.now(),
+            lastEditedBy: req.user.uid,
+        });
+
+        res.json(trip);
+    } catch (error) {
+        console.error('Update stop error:', error);
+        res.status(500).json({ error: 'Failed to update stop' });
+    }
+});
+
 // DELETE /api/trips/:id/days/:dayIndex/stops/:stopId - Remove stop
 router.delete('/:id/days/:dayIndex/stops/:stopId', async (req, res) => {
     try {

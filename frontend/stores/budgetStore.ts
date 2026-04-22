@@ -10,8 +10,8 @@ interface BudgetState {
     isLoading: boolean;
 
     fetchBudget: (tripId: string) => Promise<void>;
-    addExpense: (tripId: string, data: Partial<Expense>) => Promise<void>;
-    updateExpense: (tripId: string, expenseId: string, data: Partial<Expense>) => Promise<void>;
+    addExpense: (tripId: string, data: Partial<Expense>) => Promise<Expense | undefined>;
+    updateExpense: (tripId: string, expenseId: string, data: Partial<Expense>) => Promise<Expense | undefined>;
     deleteExpense: (tripId: string, expenseId: string) => Promise<void>;
     subscribeBudgetUpdates: (tripId: string) => () => void;
 }
@@ -44,8 +44,10 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
             }));
             // Re-fetch to update summary
             get().fetchBudget(tripId);
+            return response.data;
         } catch (error) {
             console.error('Add expense error:', error);
+            return undefined;
         }
     },
 
@@ -56,8 +58,10 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
                 expenses: state.expenses.map(e => e._id === expenseId ? response.data : e),
             }));
             get().fetchBudget(tripId);
+            return response.data;
         } catch (error) {
             console.error('Update expense error:', error);
+            return undefined;
         }
     },
 

@@ -166,9 +166,16 @@ export default function BudgetScreen() {
                             <Text variant="bodyMedium" style={{ fontWeight: '600', color: theme.colors.onSurface }}>
                                 {expense.description}
                             </Text>
-                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                                {CATEGORY_LABELS[expense.category]}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                                    {CATEGORY_LABELS[expense.category]}
+                                </Text>
+                                {expense.dayNumber && (
+                                    <View style={{ backgroundColor: theme.colors.surfaceVariant, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: 10 }}>Day {expense.dayNumber}</Text>
+                                    </View>
+                                )}
+                            </View>
                         </View>
                         <Text variant="titleSmall" style={{ fontWeight: '700', color: theme.colors.onSurface }}>
                             ${expense.amount.toFixed(2)}

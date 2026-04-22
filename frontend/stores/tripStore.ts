@@ -30,6 +30,7 @@ interface TripState {
     updateTrip: (id: string, data: Partial<Trip>) => Promise<void>;
     deleteTrip: (id: string) => Promise<void>;
     addStop: (tripId: string, dayIndex: number, stop: Partial<Stop>) => Promise<Trip | null>;
+    updateStop: (tripId: string, dayIndex: number, stopId: string, stop: Partial<Stop>) => Promise<void>;
     removeStop: (tripId: string, dayIndex: number, stopId: string) => Promise<void>;
     reorderStops: (tripId: string, dayIndex: number, stopOrder: string[]) => Promise<void>;
     addCollaborator: (tripId: string, userId: string) => Promise<void>;
@@ -158,6 +159,29 @@ export const useTripStore = create<TripState>((set, get) => ({
             });
             set({ error: error.message });
             return null;
+        }
+    },
+
+    updateStop: async (tripId, dayIndex, stopId, data) => {
+        const previousTrip = get().currentTrip;
+        try {
+            const response = await api.put(`/trips/${tripId}/days/${dayIndex}/stops/${stopId}`, data);
+            const updatedTrip = response.data;
+            set((state) => ({
+                currentTrip: state.currentTrip?._id === tripId ? updatedTrip : state.currentTrip,
+                trips: state.trips.map((t) => (t._id === tripId ? updatedTrip : t)),
+                undoStack: [...state.undoStack, {
+                    type: 'UPDATE_TRIP',
+                    tripId,
+                    data,
+                    previousState: previousTrip,
+                }],
+                redoStack: [],
+            }));
+            await localCache.set(`trip_${tripId}`, updatedTrip);
+            await localCache.set('trips', get().trips);
+        } catch (error: any) {
+            set({ error: error.message });
         }
     },
 

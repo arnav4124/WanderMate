@@ -11,6 +11,9 @@ export interface Stop {
     address?: string;
     rating?: number;
     photo?: string;
+    arrivalTime?: string;
+    cost?: number;
+    expenseId?: string;
 }
 
 export interface Day {
