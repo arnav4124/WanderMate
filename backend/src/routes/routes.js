@@ -32,8 +32,8 @@ router.post('/optimize', externalApiLimiter, async (req, res) => {
     try {
         const { coordinates, profile } = req.body;
 
-        if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 3) {
-            return res.status(400).json({ error: 'At least 3 coordinates required for optimization' });
+        if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 2) {
+            return res.status(400).json({ error: 'At least 2 coordinates required' });
         }
 
         const route = await travelService.optimizeRoute(coordinates, profile || 'driving-car');
