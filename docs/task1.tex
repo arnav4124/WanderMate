@@ -53,9 +53,7 @@
 \hypersetup{
     colorlinks=false,
     hidelinks,
-    pdftitle={WanderMate -- Task 1 Deliverable},
-    pdfauthor={Team 8},
-    pdfsubject={S26CS6.401 Software Engineering},
+    pdftitle={Project 3 Task 1},
     bookmarksnumbered=true,
 }
 
@@ -78,15 +76,6 @@
 \titlespacing{\section}{0pt}{16pt}{6pt}
 \titlespacing{\subsection}{0pt}{12pt}{4pt}
 \titlespacing{\subsubsection}{0pt}{8pt}{3pt}
-
-% ── Header / Footer ─────────────────────────────────────────
-\pagestyle{fancy}
-\fancyhf{}
-\fancyhead[L]{\small\textit{WanderMate --- Requirements \& Subsystem Overview}}
-\fancyhead[R]{\small\textit{Team 8 \textbar{} S26CS6.401}}
-\fancyfoot[C]{\small\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
-\renewcommand{\footrulewidth}{0pt}
 
 % ── Table Column Types ───────────────────────────────────────
 \newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
@@ -145,30 +134,6 @@
   {\large Project 3 --- Task 1 Deliverable}\\[0.4em]
   {\large Requirements \& Subsystem Overview}
 \end{center}
-
-\vspace{1.2em}
-\noindent\textcolor{rulegray}{\rule{\linewidth}{0.4pt}}
-\vspace{1.0em}
-
-\begin{center}
-\begin{tabular}{rl}
-  \textbf{Team}            & Team 8 \\[0.25em]
-  \textbf{Course}          & S26CS6.401 --- Software Engineering \\[0.25em]
-  \textbf{Submission Date} & 21 April 2026 \\[0.25em]
-  \textbf{Application}     & WanderMate (Android) \\[0.25em]
-\end{tabular}
-\end{center}
-
-\vspace{1.0em}
-\noindent\textcolor{rulegray}{\rule{\linewidth}{0.4pt}}
-
-\vfill
-
-\begin{center}
-  \small\textit{S26CS6.401 Software Engineering \textbar{} Project 3 \textbar{} Team 8}
-\end{center}
-
-\newpage
 
 % ── Table of Contents ───────────────────────────────────────
 \tableofcontents
@@ -823,14 +788,4 @@ User taps \textit{Clone} on a feed card $\rightarrow$ CloneService deep-copies t
 Device goes offline $\rightarrow$ Itinerary Engine routes mutations to AsyncStorage SyncQueue $\rightarrow$ device reconnects $\rightarrow$ SyncQueue flushes ordered mutations to API Gateway $\rightarrow$ MongoDB updated $\rightarrow$ Firebase receives resolved state $\rightarrow$ remote collaborators' views converge. \\
 
 \end{longtable}
-
-% ============================================================
-%  End of Document
-% ============================================================
-\vspace{1.5em}
-\noindent\textcolor{rulegray}{\rule{\linewidth}{0.4pt}}
-\begin{center}
-  \small\textit{End of Task 1 Deliverable \textbar{} WanderMate \textbar{} Team 8 \textbar{} S26CS6.401 Software Engineering}
-\end{center}
-
 \end{document}
