@@ -44,9 +44,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const colorScheme = 'light'; // Force light mode to match UI requirements
   const initialize = useAuthStore((s) => s.initialize);
-  const paperTheme = colorScheme === 'dark' ? DarkTheme : LightTheme;
+  const paperTheme = LightTheme;
 
   useEffect(() => {
     const unsubscribe = initialize();
@@ -56,7 +56,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PaperProvider theme={paperTheme}>
-        <ThemeProvider value={colorScheme === 'dark' ? NavDarkTheme : NavDefaultTheme}>
+        <ThemeProvider value={NavDefaultTheme}>
           <AuthGate>
             <Stack>
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
