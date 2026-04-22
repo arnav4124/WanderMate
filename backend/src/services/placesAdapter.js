@@ -13,11 +13,11 @@ class PlacesAdapter {
 
     async searchPOI(query, lat, lng, radius = 5000) {
         try {
-            const response = await axios.get(`${this.baseUrl}/nearbysearch/json`, {
+            const response = await axios.get(`${this.baseUrl}/textsearch/json`, {
                 params: {
+                    query: query,
                     location: `${lat},${lng}`,
                     radius,
-                    keyword: query,
                     key: this.apiKey,
                 },
                 timeout: 10000,
@@ -67,6 +67,36 @@ class PlacesAdapter {
         } catch (error) {
             console.error('Google Places category search error:', error.message);
             return [];
+        }
+    }
+
+    async findPlaceAndGetDetails(name, lat, lng) {
+        if (!this.apiKey || !name || !lat || !lng) return null;
+
+        try {
+            // Find Place ID from name and location radius
+            const findResponse = await axios.get(`${this.baseUrl}/findplacefromtext/json`, {
+                params: {
+                    input: name,
+                    inputtype: 'textquery',
+                    locationbias: `circle:50@${lat},${lng}`,
+                    fields: 'place_id',
+                    key: this.apiKey,
+                },
+                timeout: 10000,
+            });
+
+            if (findResponse.data.status !== 'OK' || !findResponse.data.candidates?.length) {
+                return null; // Could not find a match
+            }
+
+            const googlePlaceId = findResponse.data.candidates[0].place_id;
+            
+            // Now fetch details using the found ID
+            return await this.getPlaceDetails(googlePlaceId);
+        } catch (error) {
+            console.error('Google Places findPlace error:', error.message);
+            return null;
         }
     }
 

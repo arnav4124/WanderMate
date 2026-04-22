@@ -6,10 +6,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useTripStore } from '@/stores/tripStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useActiveTripStore } from '@/stores/activeTripStore';
 import { Trip } from '@/types';
 
 function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
   const theme = useTheme();
+  const { activeTripId, setActiveTrip } = useActiveTripStore();
+  const isActive = activeTripId === trip._id;
+
   const dayCount = Math.ceil(
     (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)
   ) + 1;
@@ -81,6 +85,19 @@ function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
             </Text>
           </View>
         )}
+        
+        <View style={styles.cardActions}>
+            <Chip 
+                mode={isActive ? "flat" : "outlined"} 
+                selected={isActive} 
+                onPress={() => setActiveTrip(trip._id)}
+                icon={isActive ? "check-circle" : "star-outline"}
+                style={[styles.actionChip, isActive && { backgroundColor: theme.colors.primaryContainer }]}
+                textStyle={{ fontSize: 12 }}
+            >
+                {isActive ? 'Active Trip' : 'Set Active'}
+            </Chip>
+        </View>
       </Card.Content>
     </Card>
   );
@@ -164,4 +181,6 @@ const styles = StyleSheet.create({
   emptyTitle: { fontWeight: '700', marginTop: 16 },
   emptyText: { textAlign: 'center', marginTop: 8 },
   fab: { position: 'absolute', right: 20, bottom: 20, borderRadius: 16 },
+  cardActions: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-end' },
+  actionChip: { height: 32 },
 });

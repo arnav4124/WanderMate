@@ -8,21 +8,16 @@ const { cache } = require('../middleware/cache');
  * 
  * Single interface encapsulating dual-API POI strategy and route optimization.
  * - ORS Adapter (primary) for POI search / routing
- * - Google Places (enrichment, quota-sensitive) for details/photos/ratings
- * 
- * Implements graceful degradation (NFR-08): if Google Places is unavailable,
- * falls back to ORS-only results.
+ * - Google Places (enrichment, quota-sensitive) ONLY used for details/photos/ratings
  */
 class TravelService {
     constructor() {
-        // this.overpass = new OverpassAdapter(); // Commented out overpass stuff
         this.places = new PlacesAdapter(process.env.GOOGLE_PLACES_API_KEY);
         this.ors = new ORSAdapter(process.env.ORS_API_KEY);
     }
 
     /**
-     * Search POIs - uses ORS as primary, enriches with Google Places
-     * Implements cache-aside pattern for quota protection
+     * Search POIs - uses Google Places to fetch photos and ratings, falls back to ORS
      */
     async searchPOI(query, lat, lng, radius = 5000, ignoreCache = false) {
         const cacheKey = `poi:${query}:${lat}:${lng}:${radius}`;
@@ -36,32 +31,27 @@ class TravelService {
 
         console.log(`POI search: query="${query}" lat=${lat} lng=${lng} radius=${radius} ignoreCache=${ignoreCache}`);
 
-        // Run ORS and Google Places in parallel to avoid sequential timeout stacking
-        const [primaryResults, placesResults] = await Promise.all([
-            this.ors.searchPOI(query, lat, lng, radius).catch(err => {
+        let results = await this.places.searchPOI(query, lat, lng, radius).catch(err => {
+            console.warn('Google Places POI failed:', err.message);
+            return [];
+        });
+
+        if (!results || results.length === 0) {
+            console.log('Falling back to ORS for POI search');
+            results = await this.ors.searchPOI(query, lat, lng, radius).catch(err => {
                 console.warn('ORS POI failed:', err.message);
                 return [];
-            }),
-            this.places.apiKey
-                ? this.places.searchPOI(query, lat, lng, radius).catch(err => {
-                    console.warn('Google Places failed:', err.message);
-                    return [];
-                })
-                : Promise.resolve([]),
-        ]);
+            });
+        }
         
-        console.log(`POI results: primary=${primaryResults.length}, places=${placesResults.length}`);
-
-        let results = placesResults.length > 0
-            ? this._mergeResults(primaryResults, placesResults)
-            : primaryResults;
-
+        console.log(`POI results: Returned ${results.length} items`);
+        
         cache.set(cacheKey, results, 1800); // Cache for 30 minutes
         return results;
     }
 
     /**
-     * Search by category — ORS + Google Places in parallel
+     * Search by category — uses Google Places to fetch photos and ratings, falls back to ORS
      */
     async searchByCategory(category, lat, lng, radius = 5000, ignoreCache = false) {
         const cacheKey = `cat:${category}:${lat}:${lng}:${radius}`;
@@ -75,27 +65,22 @@ class TravelService {
 
         console.log(`Category search: "${category}" lat=${lat} lng=${lng} radius=${radius} ignoreCache=${ignoreCache}`);
 
-        const [primaryResults, placesResults] = await Promise.all([
-            this.ors.searchByCategory(category, lat, lng, radius).catch(err => {
+        let results = await this.places.searchByCategory(category, lat, lng, radius).catch(err => {
+            console.warn('Google Places category failed:', err.message);
+            return [];
+        });
+
+        if (!results || results.length === 0) {
+            console.log('Falling back to ORS for category search');
+            results = await this.ors.searchByCategory(category, lat, lng, radius).catch(err => {
                 console.warn('ORS category failed:', err.message);
                 return [];
-            }),
-            this.places.apiKey
-                ? this.places.searchByCategory(category, lat, lng, radius).catch(err => {
-                    console.warn('Google Places category fallback failed:', err.message);
-                    return [];
-                })
-                : Promise.resolve([]),
-        ]);
+            });
+        }
 
-        console.log(`Category results: primary=${primaryResults.length}, places=${placesResults.length}`);
-
-        let results = placesResults.length > 0
-            ? this._mergeResults(primaryResults, placesResults)
-            : primaryResults;
+        console.log(`Category results: Returned ${results.length} items`);
 
         // Enforce the requested category so the UI displays the correct icon/color
-        // even if the place has multiple tags (e.g. both lodging and restaurant)
         results = results.map(r => ({ ...r, category }));
 
         cache.set(cacheKey, results, 1800);
@@ -103,15 +88,23 @@ class TravelService {
     }
 
     /**
-     * Get detailed place info from Google Places
+     * Get detailed place info using Google Places matching
      */
-    async getPlaceDetails(placeId) {
+    async getPlaceDetails(placeId, name = null, lat = null, lng = null) {
         const cacheKey = `details:${placeId}`;
         const cached = cache.get(cacheKey);
         if (cached) return cached;
 
         try {
-            const details = await this.places.getPlaceDetails(placeId);
+            let details = null;
+            if (placeId.startsWith('ors_') && name && lat && lng) {
+                // To get Google photos/reviews for an ORS place, we must "find" it in Places first
+                details = await this.places.findPlaceAndGetDetails(name, lat, lng);
+            } else {
+                // If it is already a Google ID
+                details = await this.places.getPlaceDetails(placeId);
+            }
+
             if (details) {
                 cache.set(cacheKey, details, 86400); // Cache for 24 hours
             }
@@ -151,26 +144,6 @@ class TravelService {
 
         const route = await this.ors.optimizeRoute(coordinates, profile);
         return route;
-    }
-
-    /**
-     * Merge primary (ORS) and Google Places results
-     * Google Places results take priority when matching by proximity
-     */
-    _mergeResults(primaryResults, placesResults) {
-        const merged = [...placesResults];
-        const placesCoords = new Set(
-            placesResults.map(p => `${p.lat?.toFixed(4)},${p.lng?.toFixed(4)}`)
-        );
-
-        for (const osm of primaryResults) {
-            const coordKey = `${osm.lat?.toFixed(4)},${osm.lng?.toFixed(4)}`;
-            if (!placesCoords.has(coordKey)) {
-                merged.push(osm);
-            }
-        }
-
-        return merged.slice(0, 50); // Limit results
     }
 }
 

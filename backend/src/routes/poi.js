@@ -61,10 +61,11 @@ router.get('/category/:category', externalApiLimiter, async (req, res) => {
     }
 });
 
-// GET /api/poi/details/:placeId
+// GET /api/poi/details/:placeId?name=&lat=&lng=
 router.get('/details/:placeId', externalApiLimiter, async (req, res) => {
     try {
-        const details = await travelService.getPlaceDetails(req.params.placeId);
+        const { name, lat, lng } = req.query;
+        const details = await travelService.getPlaceDetails(req.params.placeId, name, lat, lng);
 
         if (!details) {
             return res.status(404).json({ error: 'Place details not found' });
