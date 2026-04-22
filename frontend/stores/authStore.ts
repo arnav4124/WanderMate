@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User as FirebaseUser, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import api from '../services/api';
+import { syncQueue } from '../services/syncQueue';
 import { User } from '../types';
 
 interface AuthState {
@@ -13,6 +14,10 @@ interface AuthState {
     fetchProfile: () => Promise<void>;
     signOut: () => Promise<void>;
     initialize: () => () => void;
+    followUser: (uid: string) => Promise<void>;
+    unfollowUser: (uid: string) => Promise<void>;
+    acceptFollowRequest: (uid: string) => Promise<void>;
+    denyFollowRequest: (uid: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -40,6 +45,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     signOut: async () => {
         try {
+            await syncQueue.clear();
             await firebaseSignOut(auth);
             set({ firebaseUser: null, profile: null, isAuthenticated: false });
         } catch (error) {
@@ -63,4 +69,48 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
         return unsubscribe;
     },
+
+    followUser: async (uid: string) => {
+        try {
+            const response = await api.post(`/users/${uid}/follow`);
+            set((state) => ({
+                profile: state.profile ? { ...state.profile, following: response.data.following, pendingFollowing: response.data.pendingFollowing } : null
+            }));
+        } catch (error) {
+            console.error('Follow error:', error);
+        }
+    },
+
+    unfollowUser: async (uid: string) => {
+        try {
+            const response = await api.post(`/users/${uid}/unfollow`);
+            set((state) => ({
+                profile: state.profile ? { ...state.profile, following: response.data.following, pendingFollowing: response.data.pendingFollowing } : null
+            }));
+        } catch (error) {
+            console.error('Unfollow error:', error);
+        }
+    },
+
+    acceptFollowRequest: async (uid: string) => {
+        try {
+            const response = await api.post(`/users/${uid}/accept-follow`);
+            set((state) => ({
+                profile: state.profile ? { ...state.profile, followRequests: response.data.followRequests, followers: response.data.followers } : null
+            }));
+        } catch (error) {
+            console.error('Accept follow error:', error);
+        }
+    },
+
+    denyFollowRequest: async (uid: string) => {
+        try {
+            const response = await api.post(`/users/${uid}/deny-follow`);
+            set((state) => ({
+                profile: state.profile ? { ...state.profile, followRequests: response.data.followRequests } : null
+            }));
+        } catch (error) {
+            console.error('Deny follow error:', error);
+        }
+    }
 }));

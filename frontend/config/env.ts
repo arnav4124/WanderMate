@@ -1,4 +1,5 @@
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAd4PVuFTGHhJ1fWY4vISZ_aaIUcAo8KQM",
@@ -11,11 +12,52 @@ export const FIREBASE_CONFIG = {
   measurementId: "G-FDFZ1ENBB7"
 };
 
-const DEFAULT_API_BASE_URL = Platform.OS === 'android'
-  ? 'http://10.25.82.240:5001/api'
-  : 'http://localhost:5001/api';
+const API_PORT = '5001';
 
-// Set EXPO_PUBLIC_API_BASE_URL for physical device testing, e.g. http://192.168.1.10:5001/api
-export const API_BASE_URL = 'http://10.25.82.240:5000/api'
+const getHostFromValue = (value?: string | null) => {
+  if (!value) return null;
+
+  if (value.includes('://')) {
+    try {
+      return new URL(value).hostname;
+    } catch {
+      return null;
+    }
+  }
+
+  return value.split(':')[0] || null;
+};
+
+const getExpoHost = () => {
+  const hostCandidates = [
+    Constants.expoConfig?.hostUri,
+    (Constants as any).expoGoConfig?.debuggerHost,
+    (NativeModules as any).SourceCode?.scriptURL,
+  ];
+
+  for (const candidate of hostCandidates) {
+    const host = getHostFromValue(candidate);
+    if (host) return host;
+  }
+
+  return null;
+};
+
+const DEFAULT_API_BASE_URL = Platform.OS === 'android'
+  ? `http://10.0.2.2:${API_PORT}/api`
+  : `http://127.0.0.1:${API_PORT}/api`;
+
+const AUTO_DETECTED_DEVICE_API_BASE_URL = (() => {
+  const host = getExpoHost();
+  if (!host) return null;
+
+  if (Constants.isDevice && (host === 'localhost' || host === '127.0.0.1')) {
+    return null;
+  }
+
+  return host ? `http://${host}:${API_PORT}/api` : null;
+})();
+
+export const API_BASE_URL = AUTO_DETECTED_DEVICE_API_BASE_URL || DEFAULT_API_BASE_URL;
 
 export const GOOGLE_WEB_CLIENT_ID = '483835352991-ivhlte3v6mj8d8nkkkof1gfouncveu3b.apps.googleusercontent.com';

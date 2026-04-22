@@ -14,9 +14,9 @@ function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
   const { activeTripId, setActiveTrip } = useActiveTripStore();
   const isActive = activeTripId === trip._id;
 
-  const dayCount = Math.ceil(
+  const dayCount = trip.startDate && trip.endDate ? Math.ceil(
     (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)
-  ) + 1;
+  ) + 1 : 0;
   const stopCount = trip.days?.reduce((sum, d) => sum + (d.stops?.length || 0), 0) || 0;
 
   const statusColor = trip.status === 'active'
@@ -60,7 +60,7 @@ function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
           <View style={styles.stat}>
             <MaterialCommunityIcons name="calendar-range" size={14} color={theme.colors.primary} />
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
-              {format(new Date(trip.startDate), 'MMM d')} - {format(new Date(trip.endDate), 'MMM d, yyyy')}
+              {trip.startDate && trip.endDate ? `${format(new Date(trip.startDate), 'MMM d')} - ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Dates TBD'}
             </Text>
           </View>
           <View style={styles.stat}>
@@ -77,7 +77,7 @@ function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
           </View>
         </View>
 
-        {trip.collaborators.length > 0 && (
+        {trip.collaborators && trip.collaborators.length > 0 && (
           <View style={styles.collaborators}>
             <MaterialCommunityIcons name="account-group" size={14} color={theme.colors.onSurfaceVariant} />
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   list: { padding: 16, paddingBottom: 80 },
   emptyList: { flex: 1 },
-  tripCard: { marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
+  tripCard: { marginBottom: 16, borderRadius: 16 },
   cardCover: { height: 160 },
   cardCoverPlaceholder: { height: 160, justifyContent: 'center', alignItems: 'center' },
   cardContent: { padding: 16 },

@@ -4,6 +4,7 @@ import { Text, useTheme, Surface, Button, FAB, TextInput, SegmentedButtons, Chip
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useBudgetStore } from '@/stores/budgetStore';
 import { useTripStore } from '@/stores/tripStore';
+import { useActiveTripStore } from '@/stores/activeTripStore';
 import { CategoryColors } from '@/constants/theme';
 import { Expense } from '@/types';
 
@@ -28,19 +29,14 @@ export default function BudgetScreen() {
     const theme = useTheme();
     const { trips } = useTripStore();
     const { expenses, summary, isLoading, fetchBudget, addExpense, deleteExpense, subscribeBudgetUpdates } = useBudgetStore();
+    const { activeTripId } = useActiveTripStore();
 
-    const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+    const selectedTripId = activeTripId;
     const [showAddModal, setShowAddModal] = useState(false);
     const [description, setDescription] = useState('');
     const [amount, setAmount] = useState('');
     const [category, setCategory] = useState<string>('food');
     const [viewMode, setViewMode] = useState('list');
-
-    useEffect(() => {
-        if (trips.length > 0 && !selectedTripId) {
-            setSelectedTripId(trips[0]._id);
-        }
-    }, [trips]);
 
     useEffect(() => {
         if (selectedTripId) {
@@ -78,29 +74,19 @@ export default function BudgetScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            {/* Trip Selector */}
-            {trips.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tripSelector}>
-                    {trips.map((trip) => (
-                        <Chip
-                            key={trip._id}
-                            selected={selectedTripId === trip._id}
-                            onPress={() => setSelectedTripId(trip._id)}
-                            mode={selectedTripId === trip._id ? 'flat' : 'outlined'}
-                            style={[
-                                styles.tripChip,
-                                selectedTripId === trip._id && { backgroundColor: theme.colors.primaryContainer },
-                            ]}
-                        >
-                            {trip.name}
-                        </Chip>
-                    ))}
-                </ScrollView>
-            )}
+            {!selectedTrip ? (
+                <View style={styles.emptyExpenses}>
+                    <MaterialCommunityIcons name="wallet-outline" size={48} color={theme.colors.onSurfaceVariant} style={{ opacity: 0.4 }} />
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, paddingHorizontal: 32, textAlign: 'center' }}>
+                        Set an active trip to track your budget
+                    </Text>
+                </View>
+            ) : null}
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Budget Summary Card */}
-                {summary && (
+            {selectedTrip ? (
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {/* Budget Summary Card */}
+                    {summary ? (
                     <Surface style={[styles.summaryCard, { backgroundColor: theme.colors.primaryContainer }]} elevation={0}>
                         <Text variant="titleSmall" style={{ color: theme.colors.primary, fontWeight: '600' }}>
                             Total Budget
@@ -123,10 +109,10 @@ export default function BudgetScreen() {
                             </View>
                         </View>
                     </Surface>
-                )}
+                ) : null}
 
                 {/* Category Breakdown */}
-                {summary && Object.keys(summary.byCategory).length > 0 && (
+                {summary && Object.keys(summary.byCategory).length > 0 ? (
                     <View style={styles.categoryBreakdown}>
                         <Text variant="titleMedium" style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
                             By Category
@@ -153,7 +139,7 @@ export default function BudgetScreen() {
                             })}
                         </View>
                     </View>
-                )}
+                ) : null}
 
                 {/* Expense List */}
                 <Text variant="titleMedium" style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
@@ -170,11 +156,11 @@ export default function BudgetScreen() {
                                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                                     {CATEGORY_LABELS[expense.category]}
                                 </Text>
-                                {expense.dayNumber && (
+                                {expense.dayNumber ? (
                                     <View style={{ backgroundColor: theme.colors.surfaceVariant, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
                                         <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: 10 }}>Day {expense.dayNumber}</Text>
                                     </View>
-                                )}
+                                ) : null}
                             </View>
                         </View>
                         <Text variant="titleSmall" style={{ fontWeight: '700', color: theme.colors.onSurface }}>
@@ -184,23 +170,25 @@ export default function BudgetScreen() {
                     </Surface>
                 ))}
 
-                {expenses.length === 0 && (
+                {expenses.length === 0 ? (
                     <View style={styles.emptyExpenses}>
                         <MaterialCommunityIcons name="wallet-outline" size={48} color={theme.colors.onSurfaceVariant} style={{ opacity: 0.4 }} />
                         <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
                             No expenses recorded yet
                         </Text>
                     </View>
-                )}
-            </ScrollView>
+                ) : null}
+                </ScrollView>
+            ) : null}
 
-            <FAB
-                icon="plus"
-                style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-                color={theme.colors.onPrimary}
-                onPress={() => setShowAddModal(true)}
-                disabled={!selectedTripId}
-            />
+            {selectedTrip ? (
+                <FAB
+                    icon="plus"
+                    style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+                    color={theme.colors.onPrimary}
+                    onPress={() => setShowAddModal(true)}
+                />
+            ) : null}
 
             {/* Add Expense Modal */}
             <Portal>

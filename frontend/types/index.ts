@@ -48,6 +48,8 @@ export interface User {
     avatarUrl?: string;
     followers: string[];
     following: string[];
+    followRequests: string[];
+    pendingFollowing: string[];
     publishedTrips: string[];
 }
 

@@ -178,7 +178,7 @@ class ORSAdapter {
                 ),
             };
         } catch (error) {
-            console.error('ORS route error:', error.message);
+            console.error('ORS route error:', error.response ? JSON.stringify(error.response.data) : error.message);
             return null;
         }
     }
@@ -229,7 +229,7 @@ class ORSAdapter {
             // Get the actual route with optimized order
             return await this.getRoute(reorderedCoords, profile);
         } catch (error) {
-            console.error('ORS optimization error:', error.message);
+            console.error('ORS optimization error:', error.response ? JSON.stringify(error.response.data) : error.message);
             // Fallback to non-optimized route
             return this.getRoute(coordinates, profile);
         }

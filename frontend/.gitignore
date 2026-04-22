@@ -31,7 +31,12 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
 .env*.local
+
+# local runtime config
+config/env.ts
 
 # Firebase service account credentials (never commit these)
 *firebase-adminsdk*.json

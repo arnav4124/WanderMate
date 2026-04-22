@@ -73,7 +73,7 @@ export default function ExploreScreenV2() {
 
     const computeRoute = async () => {
         const day = activeTrip?.days?.[activeDayIndex];
-        if (!day || day.stops.length < 2) return;
+        if (!day || !day.stops || day.stops.length < 2) return;
         try {
             const coordinates = [...day.stops].sort((a, b) => a.order - b.order).map(s => ({ lat: s.lat, lng: s.lng }));
             const response = await api.post('/routes/optimize', { coordinates });
@@ -127,7 +127,10 @@ export default function ExploreScreenV2() {
     const handleDeleteDay = async () => {
         if (!activeTrip) return;
         const currentDay = activeTrip.days[activeDayIndex];
-        if (currentDay.stops.length > 0) return;
+        if (currentDay.stops && currentDay.stops.length > 0) {
+            showMessage("Cannot delete a day with stops");
+            return;
+        }
         const newDays = activeTrip.days.filter((_, idx) => idx !== activeDayIndex).map((d, idx) => ({ ...d, dayNumber: idx + 1 }));
         await updateTrip(activeTrip._id, { days: newDays });
         showMessage(`Day ${currentDay.dayNumber} deleted`);

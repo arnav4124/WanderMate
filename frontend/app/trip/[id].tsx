@@ -36,7 +36,22 @@ export default function TripDetailScreen() {
     const [manualCoordinates, setManualCoordinates] = useState(false);
     const [addingStop, setAddingStop] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
+    const [friendsList, setFriendsList] = useState<any[]>([]);
+    const [loadingFriends, setLoadingFriends] = useState(false);
     const [menuVisible, setMenuVisible] = useState(false);
+
+    const loadFriends = async () => {
+        try {
+            setLoadingFriends(true);
+            const api = (await import('@/services/api')).default;
+            const res = await api.get('/users/me/friends');
+            setFriendsList(res.data || []);
+        } catch (e) {
+            console.error('Failed to load friends', e);
+        } finally {
+            setLoadingFriends(false);
+        }
+    };
 
     useEffect(() => {
         if (id) {
@@ -266,7 +281,7 @@ export default function TripDetailScreen() {
                     anchor={<Appbar.Action icon="dots-vertical" onPress={() => setMenuVisible(true)} />}
                 >
                     <Menu.Item onPress={() => { setMenuVisible(false); router.push(`/trip/map/${id}`); }} title="View Map" leadingIcon="map" />
-                    <Menu.Item onPress={() => { setMenuVisible(false); setShowInvite(true); }} title="Invite Collaborator" leadingIcon="account-plus" />
+                    <Menu.Item onPress={() => { setMenuVisible(false); loadFriends(); setShowInvite(true); }} title="Invite Collaborator" leadingIcon="account-plus" />
                     <Menu.Item onPress={() => { setMenuVisible(false); handlePublish(); }} title="Publish to Feed" leadingIcon="share" />
                     <Divider />
                     <Menu.Item onPress={() => { setMenuVisible(false); handleDelete(); }} title="Delete Trip" leadingIcon="delete" titleStyle={{ color: theme.colors.error }} />
@@ -282,7 +297,7 @@ export default function TripDetailScreen() {
                     </Text>
                 </View>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                    {format(new Date(currentTrip.startDate), 'MMM d')} - {format(new Date(currentTrip.endDate), 'MMM d, yyyy')}
+                    {currentTrip.startDate && currentTrip.endDate ? `${format(new Date(currentTrip.startDate), 'MMM d')} - ${format(new Date(currentTrip.endDate), 'MMM d, yyyy')}` : 'Dates TBD'}
                 </Text>
             </Surface>
 
@@ -316,7 +331,7 @@ export default function TripDetailScreen() {
                                 fontSize: 10,
                             }}
                         >
-                            {format(new Date(day.date), 'MMM d')}
+                            {day.date ? format(new Date(day.date), 'MMM d') : `Day ${index + 1}`}
                         </Text>
                     </TouchableOpacity>
                 ))}
@@ -324,7 +339,7 @@ export default function TripDetailScreen() {
 
             {/* Stops List with Drag&Drop */}
             <View style={styles.stopsContainer}>
-                {currentDay && currentDay.stops.length > 0 ? (
+                {currentDay && currentDay.stops && currentDay.stops.length > 0 ? (
                     <DraggableFlatList
                         data={currentDay.stops}
                         keyExtractor={(item) => item._id || `${item.order}`}
@@ -411,24 +426,39 @@ export default function TripDetailScreen() {
             <Portal>
                 <Modal visible={showInvite} onDismiss={() => setShowInvite(false)} contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}>
                     <Text variant="titleLarge" style={{ fontWeight: '700', marginBottom: 16, color: theme.colors.onSurface }}>
-                        Invite Collaborator
+                        Select Friends to Invite
                     </Text>
-                    <TextInput label="User ID or Email" value={inviteEmail} onChangeText={setInviteEmail} mode="outlined" style={styles.input} />
-                    <Button
-                        mode="contained"
-                        onPress={async () => {
-                            if (id && inviteEmail) {
-                                await addCollaborator(id, inviteEmail.trim());
-                                setShowInvite(false);
-                                setInviteEmail('');
-                                Alert.alert('Invited!', 'Collaborator has been added.');
-                            }
-                        }}
-                        style={styles.addButton}
-                        disabled={!inviteEmail}
-                    >
-                        Send Invite
-                    </Button>
+                    {loadingFriends ? (
+                        <Text style={{ textAlign: 'center', marginVertical: 20 }}>Loading friends...</Text>
+                    ) : friendsList.length === 0 ? (
+                        <Text style={{ textAlign: 'center', marginVertical: 20, color: theme.colors.onSurfaceVariant }}>
+                            No mutual friends found. Follow users first!
+                        </Text>
+                    ) : (
+                        <ScrollView style={{ maxHeight: 300, marginBottom: 16 }}>
+                            {friendsList.map(friend => (
+                                <Surface key={friend.firebaseUid} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, marginBottom: 8, borderRadius: 12, backgroundColor: theme.colors.surfaceVariant }} elevation={0}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text variant="bodyLarge" style={{ fontWeight: '600' }}>{friend.displayName}</Text>
+                                    </View>
+                                    <Button
+                                        mode={currentTrip.collaborators?.includes(friend.firebaseUid) ? "text" : "contained-tonal"}
+                                        disabled={currentTrip.collaborators?.includes(friend.firebaseUid)}
+                                        onPress={async () => {
+                                            if (id) {
+                                                await addCollaborator(id, friend.firebaseUid);
+                                                Alert.alert('Invited!', `${friend.displayName} is now a collaborator.`);
+                                                setShowInvite(false);
+                                            }
+                                        }}
+                                    >
+                                        {currentTrip.collaborators?.includes(friend.firebaseUid) ? "Joined" : "Invite"}
+                                    </Button>
+                                </Surface>
+                            ))}
+                        </ScrollView>
+                    )}
+                    <Button mode="text" onPress={() => setShowInvite(false)}>Close</Button>
                 </Modal>
             </Portal>
         </View>

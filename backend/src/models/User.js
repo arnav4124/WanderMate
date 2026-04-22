@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema({
     avatarUrl: String,
     followers: [{ type: String }], // Firebase UIDs
     following: [{ type: String }], // Firebase UIDs
+    followRequests: [{ type: String }], // Firebase UIDs
+    pendingFollowing: [{ type: String }], // Firebase UIDs
     publishedTrips: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Trip' }],
 }, {
     timestamps: true,

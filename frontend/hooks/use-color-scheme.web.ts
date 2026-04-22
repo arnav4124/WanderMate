@@ -13,4 +13,3 @@ export function useColorScheme() {
 
   return 'light'; // Forced light mode based on design requirement
 }
-}

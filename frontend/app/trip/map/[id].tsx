@@ -32,7 +32,7 @@ export default function TripMapScreen() {
 
     const computeRoute = async () => {
         const day = currentTrip?.days?.[selectedDay];
-        if (!day || day.stops.length < 2) return;
+        if (!day || !day.stops || day.stops.length < 2) return;
 
         setLoadingRoute(true);
         try {

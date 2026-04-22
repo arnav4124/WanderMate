@@ -296,9 +296,16 @@ export const useTripStore = create<TripState>((set, get) => ({
         const tripRef = ref(database, `trips/${tripId}`);
         const listener = onValue(tripRef, async (snapshot) => {
             const data = snapshot.val();
-            if (data) {
-                // Re-fetch trip from MongoDB for full data
-                get().fetchTrip(tripId);
+            if (data && data._id) {
+                // Determine if we should update local state base on Last-Write-Wins (LWW) mechanism
+                const localTrip = get().trips.find(t => t._id === data._id);
+                // Assume older state if remote updatedAt is >= local trip updatedAt, applying data directly
+                if (!localTrip || new Date(data.updatedAt) >= new Date(localTrip.updatedAt || 0)) {
+                    set((state) => ({
+                        currentTrip: state.currentTrip?._id === data._id ? data : state.currentTrip,
+                        trips: state.trips.map(t => t._id === data._id ? data : t)
+                    }));
+                }
             }
         });
 

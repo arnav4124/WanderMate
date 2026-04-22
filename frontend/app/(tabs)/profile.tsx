@@ -1,15 +1,25 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, useTheme, Avatar, Button, Surface, Divider, List } from 'react-native-paper';
+import { Text, useTheme, Avatar, Button, Surface, Divider, List, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/authStore';
 import { useTripStore } from '@/stores/tripStore';
 import { syncQueue } from '@/services/syncQueue';
+import api from '@/services/api';
 
 export default function ProfileScreen() {
     const theme = useTheme();
-    const { firebaseUser, profile, signOut } = useAuthStore();
+    const { firebaseUser, profile, signOut, acceptFollowRequest, denyFollowRequest } = useAuthStore();
     const { trips } = useTripStore();
+    const [requests, setRequests] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (profile?.followRequests && profile.followRequests.length > 0) {
+            api.get('/users/me/requests').then(res => setRequests(res.data)).catch(console.error);
+        } else {
+            setRequests([]);
+        }
+    }, [profile?.followRequests]);
 
     const completedTrips = trips.filter(t => t.status === 'completed').length;
     const activeTrips = trips.filter(t => t.status === 'active' || t.status === 'planning').length;
@@ -70,7 +80,7 @@ export default function ProfileScreen() {
                             {profile?.followers?.length || 0}
                         </Text>
                         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                            Followers
+                            Friends
                         </Text>
                     </View>
                     <View style={styles.statDivider} />
@@ -79,7 +89,7 @@ export default function ProfileScreen() {
                             {profile?.following?.length || 0}
                         </Text>
                         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                            Following
+                            Friends (following)
                         </Text>
                     </View>
                 </View>
@@ -109,6 +119,29 @@ export default function ProfileScreen() {
                     <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Published</Text>
                 </Surface>
             </View>
+
+            {/* Friend Requests */}
+            {requests.length > 0 && (
+                <Surface style={[styles.settingsCard, { backgroundColor: theme.colors.surface, marginBottom: 16 }]} elevation={1}>
+                    <Text variant="titleMedium" style={{ padding: 16, fontWeight: 'bold' }}>Friend Requests</Text>
+                    <Divider />
+                    {requests.map(reqUser => (
+                        <List.Item
+                            key={reqUser.firebaseUid}
+                            title={reqUser.displayName}
+                            left={() => (
+                                <Avatar.Image size={40} source={{ uri: reqUser.avatarUrl }} style={{ alignSelf: 'center', marginLeft: 16 }} />
+                            )}
+                            right={() => (
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <IconButton icon="check-circle" iconColor={theme.colors.primary} size={24} onPress={() => acceptFollowRequest(reqUser.firebaseUid)} />
+                                    <IconButton icon="close-circle" iconColor={theme.colors.error} size={24} onPress={() => denyFollowRequest(reqUser.firebaseUid)} />
+                                </View>
+                            )}
+                        />
+                    ))}
+                </Surface>
+            )}
 
             {/* Settings */}
             <Surface style={[styles.settingsCard, { backgroundColor: theme.colors.surface }]} elevation={1}>

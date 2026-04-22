@@ -278,6 +278,11 @@ class TripController {
             }
 
             const { userId } = req.body;
+            const User = require('../models/User');
+            const ownerUser = await User.findOne({ firebaseUid: req.user.uid });
+            if (!ownerUser || (!ownerUser.following.includes(userId) && !ownerUser.followers.includes(userId))) {
+                return res.status(403).json({ error: 'Collaborators must be friends (following or follower)' });
+            }
             if (!userId) return res.status(400).json({ error: 'userId is required' });
 
             if (!trip.collaborators.includes(userId)) {

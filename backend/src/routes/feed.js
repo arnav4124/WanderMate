@@ -18,12 +18,16 @@ router.get('/', async (req, res) => {
         const following = currentUser?.following || [];
 
         let posts;
-        if (req.query.type === 'following' && following.length > 0) {
-            // Feed from followed users
-            posts = await FeedPost.find({ author: { $in: following } })
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit);
+        if (req.query.type === 'following') {
+            if (following.length > 0) {
+                // Feed from followed users
+                posts = await FeedPost.find({ author: { $in: following } })
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(limit);
+            } else {
+                posts = [];
+            }
         } else {
             // Discover/popular feed
             posts = await FeedPost.find()
@@ -32,11 +36,9 @@ router.get('/', async (req, res) => {
                 .limit(limit);
         }
 
-        const total = await FeedPost.countDocuments(
-            req.query.type === 'following' && following.length > 0
-                ? { author: { $in: following } }
-                : {}
-        );
+        const total = req.query.type === 'following' 
+            ? (following.length > 0 ? await FeedPost.countDocuments({ author: { $in: following } }) : 0)
+            : await FeedPost.countDocuments({});
 
         res.json({
             posts,
@@ -88,7 +90,7 @@ router.post('/publish/:tripId', async (req, res) => {
             startDate: trip.startDate,
             endDate: trip.endDate,
             duration,
-            participantCount: 1 + trip.collaborators.length,
+            participantCount: 1 + (trip.collaborators?.length || 0),
             totalBudget,
             stopCount,
         });
@@ -151,6 +153,12 @@ router.post('/:postId/clone', async (req, res) => {
 
         const originalTrip = await Trip.findById(post.trip);
         if (!originalTrip) return res.status(404).json({ error: 'Original trip not found' });
+
+        // Privacy check: must be owner or a follower
+        const currentUser = await User.findOne({ firebaseUid: req.user.uid });
+        if (originalTrip.owner !== req.user.uid && currentUser && !currentUser.following.includes(originalTrip.owner)) {
+            return res.status(403).json({ error: 'Only followers can clone this trip' });
+        }
 
         // Deep-copy trip document, assign new owner
         const clonedTrip = new Trip({

@@ -10,19 +10,23 @@ import { FeedPost } from '@/types';
 
 function FeedCard({ post, onLike, onClone }: { post: FeedPost; onLike: () => void; onClone: () => void }) {
     const theme = useTheme();
-    const { firebaseUser } = useAuthStore();
+    const { firebaseUser, profile, followUser, unfollowUser } = useAuthStore();
     const isLiked = post.likes?.includes(firebaseUser?.uid || '');
+    const isOwner = post.author === firebaseUser?.uid;
+    const isFollowing = profile?.following?.includes(post.author);
+    const isPending = profile?.pendingFollowing?.includes(post.author);
+    const canViewFull = isOwner || isFollowing;
 
     return (
         <Card style={[styles.feedCard, { backgroundColor: theme.colors.surface }]} mode="elevated">
-            {post.coverImage && (
+            {canViewFull && post.coverImage && (
                 <Card.Cover source={{ uri: post.coverImage }} style={styles.coverImage} />
             )}
-            {!post.coverImage && (
+            {!canViewFull || !post.coverImage ? (
                 <View style={[styles.coverPlaceholder, { backgroundColor: theme.colors.primaryContainer }]}>
-                    <MaterialCommunityIcons name="earth" size={48} color={theme.colors.primary} />
+                    <MaterialCommunityIcons name={canViewFull ? "earth" : "lock"} size={48} color={theme.colors.primary} />
                 </View>
-            )}
+            ) : null}
 
             <Card.Content style={styles.feedContent}>
                 {/* Author info */}
@@ -40,6 +44,18 @@ function FeedCard({ post, onLike, onClone }: { post: FeedPost; onLike: () => voi
                             {format(new Date(post.createdAt), 'MMM d, yyyy')}
                         </Text>
                     </View>
+                    <View style={{ flex: 1 }} />
+                    {!isOwner && (
+                        <Button 
+                            mode={isFollowing || isPending ? "outlined" : "contained"} 
+                            compact 
+                            onPress={() => (isFollowing || isPending) ? unfollowUser(post.author) : followUser(post.author)}
+                            labelStyle={{ fontSize: 12 }}
+                            style={{ borderRadius: 20 }}
+                        >
+                            {isFollowing ? 'Friends' : isPending ? 'Requested' : 'Add Friend'}
+                        </Button>
+                    )}
                 </View>
 
                 {/* Trip info */}
@@ -48,35 +64,41 @@ function FeedCard({ post, onLike, onClone }: { post: FeedPost; onLike: () => voi
                 </Text>
 
                 <View style={styles.chipRow}>
-                    <Chip compact icon="map-marker" textStyle={{ fontSize: 11 }}>
-                        {post.destination}
-                    </Chip>
                     <Chip compact icon="calendar" textStyle={{ fontSize: 11 }}>
                         {post.duration} days
                     </Chip>
-                    {post.participantCount > 1 && (
-                        <Chip compact icon="account-group" textStyle={{ fontSize: 11 }}>
-                            {post.participantCount}
-                        </Chip>
+                    {canViewFull && (
+                        <>
+                            <Chip compact icon="map-marker" textStyle={{ fontSize: 11 }}>
+                                {post.destination}
+                            </Chip>
+                            {post.participantCount > 1 && (
+                                <Chip compact icon="account-group" textStyle={{ fontSize: 11 }}>
+                                    {post.participantCount}
+                                </Chip>
+                            )}
+                        </>
                     )}
                 </View>
 
-                <View style={styles.statsRow}>
-                    <View style={styles.stat}>
-                        <MaterialCommunityIcons name="map-marker-check" size={14} color={theme.colors.secondary} />
-                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
-                            {post.stopCount} stops
-                        </Text>
-                    </View>
-                    {post.totalBudget > 0 && (
+                {canViewFull && (
+                    <View style={styles.statsRow}>
                         <View style={styles.stat}>
-                            <MaterialCommunityIcons name="wallet" size={14} color={theme.colors.tertiary} />
+                            <MaterialCommunityIcons name="map-marker-check" size={14} color={theme.colors.secondary} />
                             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
-                                ${post.totalBudget.toFixed(0)}
+                                {post.stopCount} stops
                             </Text>
                         </View>
-                    )}
-                </View>
+                        {post.totalBudget > 0 && (
+                            <View style={styles.stat}>
+                                <MaterialCommunityIcons name="wallet" size={14} color={theme.colors.tertiary} />
+                                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
+                                    ${post.totalBudget.toFixed(0)}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                )}
 
                 {/* Actions */}
                 <View style={styles.actions}>
@@ -91,15 +113,17 @@ function FeedCard({ post, onLike, onClone }: { post: FeedPost; onLike: () => voi
                             {post.likeCount}
                         </Text>
                     </View>
-                    <Button
-                        mode="contained-tonal"
-                        compact
-                        icon="content-copy"
-                        onPress={onClone}
-                        labelStyle={{ fontSize: 12 }}
-                    >
-                        Clone Trip
-                    </Button>
+                    {canViewFull && (
+                        <Button
+                            mode="contained-tonal"
+                            compact
+                            icon="content-copy"
+                            onPress={onClone}
+                            labelStyle={{ fontSize: 12 }}
+                        >
+                            Clone Trip
+                        </Button>
+                    )}
                 </View>
             </Card.Content>
         </Card>
@@ -138,7 +162,7 @@ export default function FeedScreen() {
                     }}
                     buttons={[
                         { value: 'discover', label: 'Discover', icon: 'compass' },
-                        { value: 'following', label: 'Following', icon: 'account-group' },
+                        { value: 'following', label: 'Friends', icon: 'account-group' },
                     ]}
                     style={styles.segmented}
                 />

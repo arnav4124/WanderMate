@@ -1,4 +1,5 @@
 const EventEmitter = require('events');
+const Trip = require('../models/Trip');
 const { firebaseDB } = require('../config/firebase');
 
 class TripEmitter extends EventEmitter {}
@@ -17,13 +18,22 @@ tripEvents.on('TRIP_CREATED', (trip) => {
 });
 
 // Observer for TRIP_UPDATED
-tripEvents.on('TRIP_UPDATED', (tripId, userId) => {
-    firebaseDB.ref(`trips/${tripId}`).update({
-        updatedAt: Date.now(),
-        lastEditedBy: userId,
-    })
-    .then(() => console.log(`Firebase synced update for trip ${tripId}`))
-    .catch((err) => console.error('Firebase sync error on update:', err));
+tripEvents.on('TRIP_UPDATED', async (tripId, userId) => {
+    try {
+        const trip = await Trip.findById(tripId).lean();
+        if (trip) {
+            trip.lastEditedBy = userId;
+            trip.updatedAt = Date.now();
+            
+            // Deeply stringify ObjectId and Date fields into basic types Firebase Realtime DB supports (strings, objects, arrays)
+            const sanitizedTrip = JSON.parse(JSON.stringify(trip));
+            
+            await firebaseDB.ref(`trips/${tripId}`).set(sanitizedTrip);
+            console.log(`Firebase synced update for trip ${tripId}`);
+        }
+    } catch (err) {
+        console.error('Firebase sync error on update:', err);
+    }
 });
 
 // Observer for TRIP_DELETED
