@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, FlatList, Linking } from 'react-native';
+import { View, StyleSheet, FlatList, Linking, RefreshControl } from 'react-native';
 import { Text, Searchbar, Chip, Card, useTheme, Button, Surface, ActivityIndicator, Portal, Modal, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -20,6 +20,7 @@ export default function ExploreScreen() {
     const [lng, setLng] = useState('78.4747');
     const [results, setResults] = useState<POI[]>([]);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [tripPickerVisible, setTripPickerVisible] = useState(false);
     const [selectedPOI, setSelectedPOI] = useState<POI | null>(null);
@@ -48,21 +49,27 @@ export default function ExploreScreen() {
         fetchTrips();
     }, [isAuthenticated, fetchTrips]);
 
-    const runSearch = useCallback(async (overrideCategory?: string | null) => {
+    const runSearch = useCallback(async (overrideCategory?: string | null, isRefresh = false) => {
         const activeCategory = overrideCategory !== undefined ? overrideCategory : selectedCategory;
         const activeQuery = activeCategory ? '' : query;
 
         if (!activeQuery && !activeCategory) return;
-        setLoading(true);
+
+        if (isRefresh) {
+            setRefreshing(true);
+        } else {
+            setLoading(true);
+        }
+
         try {
             let response;
             if (activeCategory) {
                 response = await api.get(`/poi/category/${activeCategory}`, {
-                    params: { lat, lng, radius: 5000 },
+                    params: { lat, lng, radius: 5000, refresh: isRefresh },
                 });
             } else {
                 response = await api.get('/poi/search', {
-                    params: { q: activeQuery, lat, lng, radius: 5000 },
+                    params: { q: activeQuery, lat, lng, radius: 5000, refresh: isRefresh },
                 });
             }
             setResults(response.data);
@@ -71,11 +78,16 @@ export default function ExploreScreen() {
             showMessage('Search failed. Please check backend connectivity and try again.');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     }, [query, lat, lng, selectedCategory, showMessage]);
 
     const searchPOI = useCallback(async () => {
-        await runSearch();
+        await runSearch(undefined, false);
+    }, [runSearch]);
+
+    const onRefresh = useCallback(async () => {
+        await runSearch(undefined, true);
     }, [runSearch]);
 
     const handleAddToTrip = (poi: POI) => {
@@ -257,7 +269,7 @@ export default function ExploreScreen() {
             </View>
 
             {/* Results */}
-            {loading ? (
+            {loading && !refreshing ? (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={theme.colors.primary} />
                     <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}>
@@ -271,6 +283,14 @@ export default function ExploreScreen() {
                     renderItem={renderPOICard}
                     contentContainerStyle={styles.list}
                     showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={[theme.colors.primary]}
+                            tintColor={theme.colors.primary}
+                        />
+                    }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
                             <MaterialCommunityIcons name="compass-outline" size={64} color={theme.colors.primary} style={{ opacity: 0.4 }} />

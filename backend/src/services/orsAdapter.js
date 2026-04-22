@@ -11,6 +11,137 @@ class ORSAdapter {
         this.baseUrl = 'https://api.openrouteservice.org';
     }
 
+    async searchPOI(query, lat, lng, radius = 5000) {
+        try {
+            // ORS restricts buffer to max 2000 meters
+            const safeRadius = Math.min(radius, 2000);
+            const response = await axios.post(
+                `${this.baseUrl}/pois`,
+                {
+                    request: 'pois',
+                    geometry: {
+                        geojson: {
+                            type: 'Point',
+                            coordinates: [lng, lat],
+                        },
+                        buffer: safeRadius,
+                    },
+                    limit: 50,
+                },
+                {
+                    headers: {
+                        Authorization: this.apiKey,
+                        'Content-Type': 'application/json',
+                    },
+                    timeout: 10000,
+                }
+            );
+
+            // Filter results by name if a query is provided
+            let features = response.data.features || [];
+            if (query) {
+                const lowerQuery = query.toLowerCase();
+                features = features.filter((f) => {
+                    const name = f.properties?.osm_tags?.name || '';
+                    return name.toLowerCase().includes(lowerQuery);
+                });
+            }
+
+            return features.slice(0, 50).map((f) => this._normalizePOI(f));
+        } catch (error) {
+            console.error('ORS POI search error:', error.message);
+            return [];
+        }
+    }
+
+    async searchByCategory(category, lat, lng, radius = 5000) {
+        // ORS category group mapping
+        // https://openrouteservice.org/dev/#/api-docs/pois/category_list
+        const categoryMap = {
+            hotel: [100], // accommodation
+            restaurant: [560], // sustenance (eat and drink)
+            landmark: [130, 220, 330, 620], // arts_and_culture, historic, natural, tourism
+            activity: [260], // leisure_and_entertainment
+        };
+
+        const categoryGroupIds = categoryMap[category] || [620]; // default: tourism
+        // ORS restricts buffer to max 2000 meters
+        const safeRadius = Math.min(radius, 2000);
+
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/pois`,
+                {
+                    request: 'pois',
+                    geometry: {
+                        geojson: {
+                            type: 'Point',
+                            coordinates: [lng, lat],
+                        },
+                        buffer: safeRadius,
+                    },
+                    limit: 50,
+                    filters: {
+                        category_group_ids: categoryGroupIds,
+                    },
+                },
+                {
+                    headers: {
+                        Authorization: this.apiKey,
+                        'Content-Type': 'application/json',
+                    },
+                    timeout: 10000,
+                }
+            );
+
+            const features = response.data.features || [];
+            return features.slice(0, 50).map((f) => this._normalizePOI(f));
+        } catch (error) {
+            console.error('ORS POI category search error:', error.message);
+            return [];
+        }
+    }
+
+    _normalizePOI(feature) {
+        const props = feature.properties || {};
+        const tags = props.osm_tags || {};
+        
+        let name = tags.name || tags['name:en'];
+        // Ignore "Unknown Place" noise for tourism spots without explicit names
+        if (!name || name === 'yes') {
+            const raw = tags.historic || tags.tourism || 'Point of Interest';
+            name = String(raw).charAt(0).toUpperCase() + String(raw).slice(1).replace(/_/g, ' ');
+        }
+
+        return {
+            id: `ors_${props.osm_id || Math.random().toString(36).substring(7)}`,
+            name: name,
+            lat: feature.geometry.coordinates[1],
+            lng: feature.geometry.coordinates[0],
+            category: this._detectCategory(props.category_ids || {}),
+            address: [tags['addr:street'], tags['addr:housenumber'], tags['addr:city']]
+                .filter(Boolean)
+                .join(', ') || null,
+            phone: tags.phone || null,
+            website: tags.website || null,
+            openingHours: tags.opening_hours || null,
+            distance: props.distance || null,
+            source: 'ors_poi',
+        };
+    }
+
+    _detectCategory(categoryIds) {
+        const catVals = Object.keys(categoryIds);
+        if (catVals.length === 0) return 'other';
+
+        const rawCat = categoryIds[catVals[0]]?.category_group || '';
+        if (rawCat === 'accomodation' || rawCat === 'accommodation') return 'hotel';
+        if (rawCat === 'sustenance' || rawCat === 'eat_and_drink') return 'restaurant';
+        if (['arts_and_culture', 'historic', 'tourism', 'natural'].includes(rawCat)) return 'landmark';
+        if (rawCat === 'leisure_and_entertainment') return 'activity';
+        return 'other';
+    }
+
     async getRoute(coordinates, profile = 'driving-car') {
         if (!coordinates || coordinates.length < 2) {
             return null;

@@ -1,4 +1,4 @@
-const OverpassAdapter = require('./overpassAdapter');
+// const OverpassAdapter = require('./overpassAdapter');
 const PlacesAdapter = require('./placesAdapter');
 const ORSAdapter = require('./orsAdapter');
 const { cache } = require('../middleware/cache');
@@ -7,38 +7,39 @@ const { cache } = require('../middleware/cache');
  * TravelService Facade (Facade + Strategy patterns)
  * 
  * Single interface encapsulating dual-API POI strategy and route optimization.
- * - Overpass (primary, free unlimited) for POI search
+ * - ORS Adapter (primary) for POI search / routing
  * - Google Places (enrichment, quota-sensitive) for details/photos/ratings
- * - ORS for route optimization (2,000 req/day)
  * 
  * Implements graceful degradation (NFR-08): if Google Places is unavailable,
- * falls back to Overpass-only results.
+ * falls back to ORS-only results.
  */
 class TravelService {
     constructor() {
-        this.overpass = new OverpassAdapter();
+        // this.overpass = new OverpassAdapter(); // Commented out overpass stuff
         this.places = new PlacesAdapter(process.env.GOOGLE_PLACES_API_KEY);
         this.ors = new ORSAdapter(process.env.ORS_API_KEY);
     }
 
     /**
-     * Search POIs - uses Overpass as primary, enriches with Google Places
+     * Search POIs - uses ORS as primary, enriches with Google Places
      * Implements cache-aside pattern for quota protection
      */
-    async searchPOI(query, lat, lng, radius = 5000) {
+    async searchPOI(query, lat, lng, radius = 5000, ignoreCache = false) {
         const cacheKey = `poi:${query}:${lat}:${lng}:${radius}`;
-        const cached = cache.get(cacheKey);
-        if (cached) {
-            console.log(`POI cache hit: ${cacheKey}`);
-            return cached;
+        if (!ignoreCache) {
+            const cached = cache.get(cacheKey);
+            if (cached) {
+                console.log(`POI cache hit: ${cacheKey}`);
+                return cached;
+            }
         }
 
-        console.log(`POI search: query="${query}" lat=${lat} lng=${lng} radius=${radius}`);
+        console.log(`POI search: query="${query}" lat=${lat} lng=${lng} radius=${radius} ignoreCache=${ignoreCache}`);
 
-        // Run Overpass and Google Places in parallel to avoid sequential timeout stacking
-        const [overpassResults, placesResults] = await Promise.all([
-            this.overpass.searchPOI(query, lat, lng, radius).catch(err => {
-                console.warn('Overpass failed:', err.message);
+        // Run ORS and Google Places in parallel to avoid sequential timeout stacking
+        const [primaryResults, placesResults] = await Promise.all([
+            this.ors.searchPOI(query, lat, lng, radius).catch(err => {
+                console.warn('ORS POI failed:', err.message);
                 return [];
             }),
             this.places.apiKey
@@ -48,48 +49,54 @@ class TravelService {
                 })
                 : Promise.resolve([]),
         ]);
-        console.log("Ma ka bhosda aag : ", overpassResults, placesResults);
-        console.log(`POI results: overpass=${overpassResults.length}, places=${placesResults.length}`);
+        
+        console.log(`POI results: primary=${primaryResults.length}, places=${placesResults.length}`);
 
         let results = placesResults.length > 0
-            ? this._mergeResults(overpassResults, placesResults)
-            : overpassResults;
+            ? this._mergeResults(primaryResults, placesResults)
+            : primaryResults;
 
         cache.set(cacheKey, results, 1800); // Cache for 30 minutes
         return results;
     }
 
     /**
-     * Search by category — Overpass + Google Places in parallel
+     * Search by category — ORS + Google Places in parallel
      */
-    async searchByCategory(category, lat, lng, radius = 5000) {
+    async searchByCategory(category, lat, lng, radius = 5000, ignoreCache = false) {
         const cacheKey = `cat:${category}:${lat}:${lng}:${radius}`;
-        const cached = cache.get(cacheKey);
-        if (cached) {
-            console.log(`Category cache hit: ${cacheKey}`);
-            return cached;
+        if (!ignoreCache) {
+            const cached = cache.get(cacheKey);
+            if (cached) {
+                console.log(`Category cache hit: ${cacheKey}`);
+                return cached;
+            }
         }
 
-        console.log(`Category search: "${category}" lat=${lat} lng=${lng} radius=${radius}`);
+        console.log(`Category search: "${category}" lat=${lat} lng=${lng} radius=${radius} ignoreCache=${ignoreCache}`);
 
-        const [overpassResults, placesResults] = await Promise.all([
-            this.overpass.searchByCategory(category, lat, lng, radius).catch(err => {
-                console.warn('Overpass category failed:', err.message);
+        const [primaryResults, placesResults] = await Promise.all([
+            this.ors.searchByCategory(category, lat, lng, radius).catch(err => {
+                console.warn('ORS category failed:', err.message);
                 return [];
             }),
             this.places.apiKey
-                ? this.places.searchPOI(category, lat, lng, radius).catch(err => {
+                ? this.places.searchByCategory(category, lat, lng, radius).catch(err => {
                     console.warn('Google Places category fallback failed:', err.message);
                     return [];
                 })
                 : Promise.resolve([]),
         ]);
 
-        console.log(`Category results: overpass=${overpassResults.length}, places=${placesResults.length}`);
+        console.log(`Category results: primary=${primaryResults.length}, places=${placesResults.length}`);
 
         let results = placesResults.length > 0
-            ? this._mergeResults(overpassResults, placesResults)
-            : overpassResults;
+            ? this._mergeResults(primaryResults, placesResults)
+            : primaryResults;
+
+        // Enforce the requested category so the UI displays the correct icon/color
+        // even if the place has multiple tags (e.g. both lodging and restaurant)
+        results = results.map(r => ({ ...r, category }));
 
         cache.set(cacheKey, results, 1800);
         return results;
@@ -147,16 +154,16 @@ class TravelService {
     }
 
     /**
-     * Merge Overpass and Google Places results
+     * Merge primary (ORS) and Google Places results
      * Google Places results take priority when matching by proximity
      */
-    _mergeResults(overpassResults, placesResults) {
+    _mergeResults(primaryResults, placesResults) {
         const merged = [...placesResults];
         const placesCoords = new Set(
             placesResults.map(p => `${p.lat?.toFixed(4)},${p.lng?.toFixed(4)}`)
         );
 
-        for (const osm of overpassResults) {
+        for (const osm of primaryResults) {
             const coordKey = `${osm.lat?.toFixed(4)},${osm.lng?.toFixed(4)}`;
             if (!placesCoords.has(coordKey)) {
                 merged.push(osm);

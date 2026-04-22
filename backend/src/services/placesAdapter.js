@@ -36,6 +36,40 @@ class PlacesAdapter {
         }
     }
 
+    async searchByCategory(category, lat, lng, radius = 5000) {
+        const categoryMap = {
+            hotel: 'lodging',
+            restaurant: 'restaurant',
+            landmark: 'tourist_attraction',
+            activity: 'amusement_park'
+        };
+
+        const type = categoryMap[category] || 'point_of_interest';
+
+        try {
+            const response = await axios.get(`${this.baseUrl}/nearbysearch/json`, {
+                params: {
+                    location: `${lat},${lng}`,
+                    radius,
+                    type: type,
+                    key: this.apiKey,
+                },
+                timeout: 10000,
+            });
+
+            if (response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
+                console.error('Google Places API status:', response.data.status, response.data.error_message || '');
+                return [];
+            }
+
+            console.log(`Google Places Category: ${response.data.results?.length || 0} results (status: ${response.data.status})`);
+            return response.data.results.map(place => this._normalize(place));
+        } catch (error) {
+            console.error('Google Places category search error:', error.message);
+            return [];
+        }
+    }
+
     async getPlaceDetails(placeId) {
         try {
             const response = await axios.get(`${this.baseUrl}/details/json`, {

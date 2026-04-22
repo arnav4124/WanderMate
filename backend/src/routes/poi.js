@@ -7,12 +7,13 @@ const travelService = getTravelService();
 
 // All routes use external API rate limiter to protect quotas (NFR-06)
 
-// GET /api/poi/search?q=query&lat=&lng=&radius=
+// GET /api/poi/search?q=query&lat=&lng=&radius=&refresh=true
 router.get('/search', externalApiLimiter, async (req, res) => {
     const startTime = Date.now();
     try {
-        const { q, lat, lng, radius } = req.query;
-        console.log(`[POI /search] q="${q}" lat=${lat} lng=${lng} radius=${radius}`);
+        const { q, lat, lng, radius, refresh } = req.query;
+        const ignoreCache = refresh === 'true';
+        console.log(`[POI /search] q="${q}" lat=${lat} lng=${lng} radius=${radius} refresh=${ignoreCache}`);
 
         if (!q || !lat || !lng) {
             return res.status(400).json({ error: 'q, lat, and lng are required' });
@@ -22,7 +23,8 @@ router.get('/search', externalApiLimiter, async (req, res) => {
             q,
             parseFloat(lat),
             parseFloat(lng),
-            parseInt(radius) || 5000
+            parseInt(radius) || 5000,
+            ignoreCache
         );
 
         console.log(`[POI /search] ${results.length} results in ${Date.now() - startTime}ms`);
@@ -33,11 +35,12 @@ router.get('/search', externalApiLimiter, async (req, res) => {
     }
 });
 
-// GET /api/poi/category/:category?lat=&lng=&radius=
+// GET /api/poi/category/:category?lat=&lng=&radius=&refresh=true
 router.get('/category/:category', externalApiLimiter, async (req, res) => {
     try {
-        const { lat, lng, radius } = req.query;
+        const { lat, lng, radius, refresh } = req.query;
         const { category } = req.params;
+        const ignoreCache = refresh === 'true';
 
         if (!lat || !lng) {
             return res.status(400).json({ error: 'lat and lng are required' });
@@ -47,7 +50,8 @@ router.get('/category/:category', externalApiLimiter, async (req, res) => {
             category,
             parseFloat(lat),
             parseFloat(lng),
-            parseInt(radius) || 5000
+            parseInt(radius) || 5000,
+            ignoreCache
         );
 
         res.json(results);
