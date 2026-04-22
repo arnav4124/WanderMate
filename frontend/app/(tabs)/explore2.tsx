@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { View, StyleSheet, FlatList, Linking, RefreshControl, Platform } from 'react-native';
+import { View, StyleSheet, FlatList, Linking, RefreshControl, Platform, TouchableOpacity } from 'react-native';
 import { Text, Searchbar, Chip, Card, useTheme, Button, Surface, ActivityIndicator, IconButton, Portal, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -20,7 +20,7 @@ export default function ExploreScreenV2() {
     const theme = useTheme();
     const router = useRouter();
     const navigation = useNavigation();
-    const { trips, fetchTrips, addStop, updateTrip } = useTripStore();
+    const { trips, fetchTrips, addStop, updateTrip, removeStop, reorderStops } = useTripStore();
     const { activeTripId, activeDayIndex, setActiveDay } = useActiveTripStore();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
@@ -33,6 +33,9 @@ export default function ExploreScreenV2() {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [selectedPOI, setSelectedPOI] = useState<POI | null>(null);
+
+    const [routeData, setRouteData] = useState<any>(null);
+    const [loadingRoute, setLoadingRoute] = useState(false);
 
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -71,6 +74,34 @@ export default function ExploreScreenV2() {
         };
         updateLocation();
     }, [activeTrip?.destination]);
+
+    useEffect(() => {
+        if (activeTrip?.days?.[activeDayIndex]?.stops?.length && activeTrip.days[activeDayIndex].stops.length >= 2) {
+            computeRoute();
+        } else {
+            setRouteData(null);
+        }
+    }, [activeDayIndex, activeTrip]);
+
+    const computeRoute = async () => {
+        const day = activeTrip?.days?.[activeDayIndex];
+        if (!day || day.stops.length < 2) return;
+
+        setLoadingRoute(true);
+        try {
+            // Prevent in-place mutation of the stops array
+            const coordinates = [...day.stops]
+                .sort((a, b) => a.order - b.order)
+                .map(s => ({ lat: s.lat, lng: s.lng }));
+
+            const response = await api.post('/routes/optimize', { coordinates });
+            setRouteData(response.data);
+        } catch (error) {
+            console.error('Route error:', error);
+        } finally {
+            setLoadingRoute(false);
+        }
+    };
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -203,6 +234,54 @@ export default function ExploreScreenV2() {
         setActiveDay(newDays.length - 1);
     };
 
+    const handleStopPress = (stop: any) => {
+        setMode('map');
+        setSelectedPOI({
+            id: stop.placeId || stop._id || stop.name,
+            placeId: stop.placeId,
+            name: stop.name,
+            lat: stop.lat,
+            lng: stop.lng,
+            category: stop.category,
+            photo: stop.photo,
+            rating: stop.rating,
+            address: stop.address,
+            openingHours: stop.openingHours,
+            priceLevel: stop.priceLevel,
+        } as POI);
+        sheetRef.current?.snapToIndex(0);
+    };
+
+    const moveStop = async (index: number, direction: 'up' | 'down') => {
+        if (!activeTrip) return;
+        const day = activeTrip.days[activeDayIndex];
+        const stops = [...day.stops].sort((a, b) => a.order - b.order); // Guarantee sorted order
+        if (direction === 'up' && index > 0) {
+            [stops[index - 1], stops[index]] = [stops[index], stops[index - 1]];
+        } else if (direction === 'down' && index < stops.length - 1) {
+            [stops[index + 1], stops[index]] = [stops[index], stops[index + 1]];
+        } else {
+            return;
+        }
+        const stopOrder = stops.map(s => s._id);
+        await reorderStops(activeTrip._id, activeDayIndex, stopOrder);
+    };
+
+    const handleDeleteDay = async () => {
+        if (!activeTrip) return;
+        const currentDay = activeTrip.days[activeDayIndex];
+        if (currentDay.stops.length > 0) return; // Only delete empty days
+        
+        const newDays = activeTrip.days.filter((_, idx) => idx !== activeDayIndex).map((d, idx) => ({
+            ...d,
+            dayNumber: idx + 1 // Re-number subsequent days
+        }));
+
+        await updateTrip(activeTrip._id, { days: newDays });
+        showMessage(`Day ${currentDay.dayNumber} deleted`);
+        setActiveDay(Math.max(0, activeDayIndex - 1));
+    };
+
     const handleMapMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
@@ -211,6 +290,21 @@ export default function ExploreScreenV2() {
                 if (poi) {
                     setSelectedPOI(poi);
                 }
+            } else if (data.type === 'STOP_CLICK' && data.stop) {
+                const stop = data.stop;
+                setSelectedPOI({
+                    id: stop.id || stop._id || stop.name,
+                    placeId: stop.placeId,
+                    name: stop.name,
+                    lat: stop.lat,
+                    lng: stop.lng,
+                    category: stop.category,
+                    photo: stop.photo,
+                    rating: stop.rating,
+                    address: stop.address,
+                    openingHours: stop.openingHours,
+                    priceLevel: stop.priceLevel,
+                } as POI);
             }
         } catch (e) {
             console.error("Failed to parse map message", e);
@@ -330,12 +424,19 @@ export default function ExploreScreenV2() {
 
         var markers = [];
         
-        // Render stops
-        var stops = ${JSON.stringify((activeTrip?.days[activeDayIndex]?.stops || []).map((s, i) => ({
+        // Render stops (strictly sorted by order)
+        var stops = ${JSON.stringify([...(activeTrip?.days[activeDayIndex]?.stops || [])].sort((a, b) => a.order - b.order).map((s, i) => ({
+            id: s._id,
+            placeId: s.placeId,
             lat: s.lat,
             lng: s.lng,
             name: s.name,
             category: s.category,
+            photo: s.photo,
+            rating: s.rating,
+            address: s.address,
+            openingHours: s.openingHours,
+            priceLevel: s.priceLevel,
             order: i + 1,
             color: CategoryColors[s.category] || '#95E1D3',
         })))};
@@ -348,11 +449,26 @@ export default function ExploreScreenV2() {
                 iconAnchor: [16, 16],
             });
             var marker = L.marker([stop.lat, stop.lng], { icon: icon }).addTo(map);
+            marker.on('click', function() {
+                if (window.ReactNativeWebView) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'STOP_CLICK', stop: stop }));
+                }
+            });
             markers.push(marker);
         });
 
         // Draw polyline connecting stops
-        if (stops.length >= 2) {
+        var routeGeoJSON = ${routeData?.geometry ? JSON.stringify(routeData.geometry) : 'null'};
+        if (routeGeoJSON) {
+            L.geoJSON(routeGeoJSON, {
+                style: {
+                    color: '#1B6EF3',
+                    weight: 4,
+                    opacity: 0.8,
+                    dashArray: null,
+                }
+            }).addTo(map);
+        } else if (stops.length >= 2) {
             var latlngs = stops.map(function(s) { return [s.lat, s.lng]; });
             L.polyline(latlngs, {
                 color: '#1B6EF3',
@@ -388,6 +504,21 @@ export default function ExploreScreenV2() {
         } else if (stops.length === 0 && !selectedPOI) {
             // fallback center
             map.setView([${lat}, ${lng}], 13);
+        }
+
+        // Route info box
+        var routeInfo = ${routeData ? JSON.stringify({ distance: routeData.distance, duration: routeData.duration }) : 'null'};
+        if (routeInfo) {
+            var infoDiv = L.control({ position: 'topright' });
+            infoDiv.onAdd = function() {
+                var div = L.DomUtil.create('div', 'leaflet-bar');
+                div.style.cssText = 'background:white;padding:8px 12px;border-radius:8px;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.2); margin-top: 10px; margin-right: 10px; font-weight: bold;';
+                var km = (routeInfo.distance).toFixed(1);
+                var mins = Math.round(routeInfo.duration / 60);
+                div.innerHTML = '🚗 ' + km + ' km · ' + mins + ' min';
+                return div;
+            };
+            infoDiv.addTo(map);
         }
       </script>
     </body>
@@ -479,28 +610,71 @@ export default function ExploreScreenV2() {
                             onMessage={handleMapMessage}
                         />
                         {/* Map Mode Mini Card */}
-                        {selectedPOI && (
-                            <View style={styles.miniCardContainer}>
-                                <Card style={[styles.poiCard, { backgroundColor: theme.colors.surface, marginBottom: 0 }]} mode="elevated">
-                                    <Card.Content style={styles.poiContent}>
-                                        <View style={styles.poiHeader}>
-                                            <Text variant="titleMedium" style={{ flex: 1, fontWeight: '700' }} numberOfLines={1}>
-                                                {selectedPOI.name}
-                                            </Text>
-                                            <IconButton icon="close" size={20} onPress={() => setSelectedPOI(null)} style={{ margin: 0 }} />
-                                        </View>
-                                        <View style={styles.poiActions}>
-                                            <Button mode="contained" compact onPress={() => handleAddToTrip(selectedPOI)} icon="plus">
-                                                Add to Trip
-                                            </Button>
-                                            <Button mode="outlined" compact onPress={() => openSource(selectedPOI)}>
-                                                More Details
-                                            </Button>
-                                        </View>
-                                    </Card.Content>
-                                </Card>
-                            </View>
-                        )}
+                        {selectedPOI && (() => {
+                            const isAdded = activeTrip?.days?.[activeDayIndex]?.stops?.some(s => s.placeId === selectedPOI.placeId || s._id === selectedPOI.id);
+                            return (
+                                <View style={styles.miniCardContainer}>
+                                    <Card style={[styles.poiCard, { backgroundColor: theme.colors.surface, marginBottom: 0 }]} mode="elevated">
+                                        {selectedPOI.photo && (
+                                            <Card.Cover source={{ uri: selectedPOI.photo }} style={{ height: 100 }} />
+                                        )}
+                                        <Card.Content style={styles.poiContent}>
+                                            <View style={styles.poiHeader}>
+                                                <View style={[styles.categoryBadge, { backgroundColor: CategoryColors[selectedPOI.category] || '#95E1D3' }]}>
+                                                    <MaterialCommunityIcons
+                                                        name={(CategoryIcons[selectedPOI.category] || 'map-marker') as any}
+                                                        size={14}
+                                                        color="#FFF"
+                                                    />
+                                                </View>
+                                                <Text variant="titleSmall" style={{ flex: 1, fontWeight: '700', color: theme.colors.onSurface }} numberOfLines={1}>
+                                                    {selectedPOI.name}
+                                                </Text>
+                                                {selectedPOI.rating && (
+                                                    <View style={styles.ratingContainer}>
+                                                        <MaterialCommunityIcons name="star" size={14} color="#FFD93D" />
+                                                        <Text variant="bodySmall" style={{ marginLeft: 2, fontWeight: '600', color: theme.colors.onSurface }}>
+                                                            {selectedPOI.rating.toFixed(1)}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                                <IconButton icon="close" size={20} onPress={() => setSelectedPOI(null)} style={{ margin: 0, marginLeft: 4 }} />
+                                            </View>
+
+                                            <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                                                {(selectedPOI.openingHours === 'Open 24 hours' || selectedPOI.openingHours) && (
+                                                    <Chip compact textStyle={{ fontSize: 10 }} icon="clock-outline" style={{ height: 24 }}>
+                                                        {Array.isArray(selectedPOI.openingHours) ? 'Open Today' : (selectedPOI.openingHours || 'Open')}
+                                                    </Chip>
+                                                )}
+                                                {selectedPOI.priceLevel !== undefined && (
+                                                    <Chip compact textStyle={{ fontSize: 10 }} icon="cash" style={{ height: 24, backgroundColor: selectedPOI.priceLevel === 0 ? '#E8F5E9' : undefined }}>
+                                                        {renderPriceLevel(selectedPOI.priceLevel)}
+                                                    </Chip>
+                                                )}
+                                            </View>
+
+                                            {selectedPOI.address && (
+                                                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }} numberOfLines={2}>
+                                                    {selectedPOI.address}
+                                                </Text>
+                                            )}
+
+                                            <View style={styles.poiActions}>
+                                                {!isAdded && (
+                                                    <Button mode="contained" compact onPress={() => handleAddToTrip(selectedPOI)} icon="plus" style={{ marginRight: 8 }}>
+                                                        Add
+                                                    </Button>
+                                                )}
+                                                <Button mode="outlined" compact onPress={() => openSource(selectedPOI)} style={{ flex: 1 }}>
+                                                    More Details
+                                                </Button>
+                                            </View>
+                                        </Card.Content>
+                                    </Card>
+                                </View>
+                            );
+                        })()}
                     </View>
                 )}
             </View>
@@ -525,7 +699,7 @@ export default function ExploreScreenV2() {
                     </BottomSheetView>
                     
                     <View style={[styles.dayTabs, { backgroundColor: theme.colors.surface }]}>
-                        <FlatList
+                        <BottomSheetFlatList
                             horizontal
                             data={activeTrip.days}
                             keyExtractor={(item) => item._id || item.dayNumber.toString()}
@@ -555,23 +729,61 @@ export default function ExploreScreenV2() {
                     </View>
 
                     <BottomSheetFlatList
-                        data={activeTrip.days[activeDayIndex]?.stops || []}
+                        data={activeTrip.days[activeDayIndex]?.stops ? [...activeTrip.days[activeDayIndex].stops].sort((a, b) => a.order - b.order) : []}
                         keyExtractor={(item, index) => item._id || index.toString()}
                         contentContainerStyle={styles.sheetList}
                         renderItem={({ item, index }) => (
                             <View style={styles.stopItem}>
-                                <View style={[styles.stopNumber, { backgroundColor: CategoryColors[item.category] || theme.colors.primary }]}>
-                                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text variant="bodyMedium" style={{ fontWeight: '600' }}>{item.name}</Text>
-                                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.category}</Text>
+                                <TouchableOpacity 
+                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }} 
+                                    onPress={() => handleStopPress(item)}
+                                >
+                                    <View style={[styles.stopNumber, { backgroundColor: CategoryColors[item.category] || theme.colors.primary }]}>
+                                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text variant="bodyMedium" style={{ fontWeight: '600' }} numberOfLines={1}>{item.name}</Text>
+                                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize' }}>{item.category}</Text>
+                                    </View>
+                                </TouchableOpacity>
+                                <View style={styles.stopControls}>
+                                    <View style={styles.moveButtons}>
+                                        <IconButton 
+                                            icon="chevron-up" 
+                                            size={16} 
+                                            disabled={index === 0} 
+                                            onPress={() => moveStop(index, 'up')} 
+                                            style={styles.tightIcon} 
+                                        />
+                                        <IconButton 
+                                            icon="chevron-down" 
+                                            size={16} 
+                                            disabled={index === (activeTrip.days[activeDayIndex]?.stops.length - 1)} 
+                                            onPress={() => moveStop(index, 'down')} 
+                                            style={styles.tightIcon} 
+                                        />
+                                    </View>
+                                    <IconButton 
+                                        icon="delete-outline" 
+                                        iconColor={theme.colors.error}
+                                        size={20} 
+                                        onPress={() => removeStop(activeTrip._id, activeDayIndex, item._id)} 
+                                    />
                                 </View>
                             </View>
                         )}
                         ListEmptyComponent={
                             <View style={styles.emptyStops}>
                                 <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>No stops for this day yet.</Text>
+                                <Button 
+                                    mode="text" 
+                                    icon="delete" 
+                                    textColor={theme.colors.error}
+                                    onPress={handleDeleteDay}
+                                    style={{ marginTop: 12 }}
+                                >
+                                    Delete Empty Day
+                                </Button>
                             </View>
                         }
                     />
@@ -617,5 +829,8 @@ const styles = StyleSheet.create({
     sheetList: { paddingHorizontal: 16, paddingBottom: 24 },
     stopItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ccc' },
     stopNumber: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    stopControls: { flexDirection: 'row', alignItems: 'center' },
+    moveButtons: { flexDirection: 'column', marginRight: -12 },
+    tightIcon: { margin: -4, width: 24, height: 24 },
     emptyStops: { padding: 24, alignItems: 'center' },
 });

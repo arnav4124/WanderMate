@@ -165,8 +165,10 @@ export const useTripStore = create<TripState>((set, get) => ({
         const previousTrip = get().currentTrip;
         try {
             const response = await api.delete(`/trips/${tripId}/days/${dayIndex}/stops/${stopId}`);
+            const updatedTrip = response.data;
             set((state) => ({
-                currentTrip: response.data,
+                currentTrip: state.currentTrip?._id === tripId ? updatedTrip : state.currentTrip,
+                trips: state.trips.map((t) => (t._id === tripId ? updatedTrip : t)),
                 undoStack: [...state.undoStack, {
                     type: 'REMOVE_STOP',
                     tripId,
@@ -176,6 +178,8 @@ export const useTripStore = create<TripState>((set, get) => ({
                 }],
                 redoStack: [],
             }));
+            await localCache.set(`trip_${tripId}`, updatedTrip);
+            await localCache.set('trips', get().trips);
         } catch (error: any) {
             await syncQueue.add({
                 method: 'DELETE',
@@ -189,8 +193,10 @@ export const useTripStore = create<TripState>((set, get) => ({
         const previousTrip = get().currentTrip;
         try {
             const response = await api.put(`/trips/${tripId}/days/${dayIndex}/reorder`, { stopOrder });
+            const updatedTrip = response.data;
             set((state) => ({
-                currentTrip: response.data,
+                currentTrip: state.currentTrip?._id === tripId ? updatedTrip : state.currentTrip,
+                trips: state.trips.map((t) => (t._id === tripId ? updatedTrip : t)),
                 undoStack: [...state.undoStack, {
                     type: 'REORDER_STOPS',
                     tripId,
@@ -200,6 +206,8 @@ export const useTripStore = create<TripState>((set, get) => ({
                 }],
                 redoStack: [],
             }));
+            await localCache.set(`trip_${tripId}`, updatedTrip);
+            await localCache.set('trips', get().trips);
         } catch (error: any) {
             set({ error: error.message });
         }
