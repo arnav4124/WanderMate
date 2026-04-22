@@ -1,115 +1,54 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { View, StyleSheet, FlatList, Linking, RefreshControl, Platform, TouchableOpacity } from 'react-native';
-import { Text, Searchbar, Chip, Card, useTheme, Button, Surface, ActivityIndicator, IconButton, Portal, Snackbar, TextInput } from 'react-native-paper';
+import { View, StyleSheet, FlatList, RefreshControl, Linking } from 'react-native';
+import { Text, useTheme, ActivityIndicator, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
-import { WebView } from 'react-native-webview';
-import BottomSheet, { BottomSheetView, BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import BottomSheet from '@gorhom/bottom-sheet';
 import { useRouter, useNavigation } from 'expo-router';
 
 import api from '@/services/api';
-import { POI, Day } from '@/types';
-import { useTripStore } from '@/stores/tripStore'
+import { POI, Day, Stop } from '@/types';
+import { useTripStore } from '@/stores/tripStore';
 import { useBudgetStore } from '@/stores/budgetStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useActiveTripStore } from '@/stores/activeTripStore';
-import { CategoryColors, CategoryIcons } from '@/constants/theme';
 
-const CATEGORIES = ['hotel', 'restaurant', 'landmark', 'activity'] as const;
+import { useLocation } from '@/hooks/useLocation';
+import { usePOISearch } from '@/hooks/usePOISearch';
+import { SearchBarSection } from '@/components/explore/SearchBarSection';
+import { POICard } from '@/components/explore/POICard';
+import { ExploreMapView } from '@/components/explore/MapView';
+import { ItineraryBottomSheet } from '@/components/explore/ItineraryBottomSheet';
 
 export default function ExploreScreenV2() {
     const theme = useTheme();
-    const router = useRouter();
     const navigation = useNavigation();
     const { trips, fetchTrips, addStop, updateTrip, removeStop, reorderStops, updateStop } = useTripStore();
     const { addExpense, updateExpense } = useBudgetStore();
     const { activeTripId, activeDayIndex, setActiveDay } = useActiveTripStore();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
+    const { lat, lng } = useLocation();
+    const { query, setQuery, results, loading, refreshing, selectedCategory, setSelectedCategory, runSearch } = usePOISearch();
+
     const [mode, setMode] = useState<'list' | 'map'>('list');
-    const [query, setQuery] = useState('');
-    const [lat, setLat] = useState('17.3616'); // Default: Hyderabad
-    const [lng, setLng] = useState('78.4747');
-    const [results, setResults] = useState<POI[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [selectedPOI, setSelectedPOI] = useState<POI | null>(null);
-
     const [routeData, setRouteData] = useState<any>(null);
-    const [loadingRoute, setLoadingRoute] = useState(false);
-
     const [expandedStopId, setExpandedStopId] = useState<string | null>(null);
     const [editTime, setEditTime] = useState('');
     const [editDuration, setEditDuration] = useState('');
     const [editCost, setEditCost] = useState('');
     const [editNotes, setEditNotes] = useState('');
-
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
 
     const sheetRef = useRef<BottomSheet>(null);
     const snapPoints = useMemo(() => ['10%', '45%', '90%'], []);
-
     const activeTrip = useMemo(() => trips.find(t => t._id === activeTripId), [trips, activeTripId]);
 
     const showMessage = useCallback((message: string) => {
         setSnackbarMessage(message);
         setSnackbarVisible(true);
     }, []);
-
-    // Set location based on active trip destination or current location
-    useEffect(() => {
-        const updateLocation = async () => {
-            if (activeTrip?.destination) {
-                try {
-                    const geocoded = await Location.geocodeAsync(activeTrip.destination);
-                    if (geocoded && geocoded.length > 0) {
-                        setLat(geocoded[0].latitude.toString());
-                        setLng(geocoded[0].longitude.toString());
-                        return;
-                    }
-                } catch (e) {
-                    console.error("Geocoding failed", e);
-                }
-            }
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status === 'granted') {
-                const loc = await Location.getCurrentPositionAsync({});
-                setLat(loc.coords.latitude.toString());
-                setLng(loc.coords.longitude.toString());
-            }
-        };
-        updateLocation();
-    }, [activeTrip?.destination]);
-
-    useEffect(() => {
-        if (activeTrip?.days?.[activeDayIndex]?.stops?.length && activeTrip.days[activeDayIndex].stops.length >= 2) {
-            computeRoute();
-        } else {
-            setRouteData(null);
-        }
-    }, [activeDayIndex, activeTrip]);
-
-    const computeRoute = async () => {
-        const day = activeTrip?.days?.[activeDayIndex];
-        if (!day || day.stops.length < 2) return;
-
-        setLoadingRoute(true);
-        try {
-            // Prevent in-place mutation of the stops array
-            const coordinates = [...day.stops]
-                .sort((a, b) => a.order - b.order)
-                .map(s => ({ lat: s.lat, lng: s.lng }));
-
-            const response = await api.post('/routes/optimize', { coordinates });
-            setRouteData(response.data);
-        } catch (error) {
-            console.error('Route error:', error);
-        } finally {
-            setLoadingRoute(false);
-        }
-    };
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -124,155 +63,87 @@ export default function ExploreScreenV2() {
         }
     }, [navigation, activeTrip]);
 
-    const runSearch = useCallback(async (overrideCategory?: string | null, isRefresh = false) => {
-        const activeCategory = overrideCategory !== undefined ? overrideCategory : selectedCategory;
-        const activeQuery = activeCategory ? '' : query;
-
-        if (!activeQuery && !activeCategory) return;
-
-        if (isRefresh) setRefreshing(true);
-        else setLoading(true);
-
-        try {
-            let response;
-            if (activeCategory) {
-                response = await api.get(`/poi/category/${activeCategory}`, {
-                    params: { lat, lng, radius: 5000, refresh: isRefresh },
-                });
-            } else {
-                response = await api.get('/poi/search', {
-                    params: { q: activeQuery, lat, lng, radius: 5000, refresh: isRefresh },
-                });
-            }
-            setResults(response.data);
-            setSelectedPOI(null);
-        } catch (error) {
-            console.error('Search error:', error);
-            showMessage('Search failed. Please try again.');
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
+    useEffect(() => {
+        if (activeTrip?.days?.[activeDayIndex]?.stops?.length && activeTrip.days[activeDayIndex].stops.length >= 2) {
+            computeRoute();
+        } else {
+            setRouteData(null);
         }
-    }, [query, lat, lng, selectedCategory, showMessage]);
+    }, [activeDayIndex, activeTrip]);
 
-    const searchPOI = useCallback(async () => {
-        await runSearch(undefined, false);
-    }, [runSearch]);
-
-    const onRefresh = useCallback(async () => {
-        await runSearch(undefined, true);
-    }, [runSearch]);
+    const computeRoute = async () => {
+        const day = activeTrip?.days?.[activeDayIndex];
+        if (!day || day.stops.length < 2) return;
+        try {
+            const coordinates = [...day.stops].sort((a, b) => a.order - b.order).map(s => ({ lat: s.lat, lng: s.lng }));
+            const response = await api.post('/routes/optimize', { coordinates });
+            setRouteData(response.data);
+        } catch (error) {
+            console.error('Route error:', error);
+        }
+    };
 
     const handleAddToTrip = async (poi: POI) => {
         if (!activeTrip) {
             showMessage('Please select an active trip from the Home tab first.');
             return;
         }
-
         const savedTrip = await addStop(activeTrip._id, activeDayIndex, {
-            name: poi.name,
-            placeId: poi.placeId,
-            lat: poi.lat,
-            lng: poi.lng,
-            category: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'other'].includes(poi.category)
-                ? poi.category as any
-                : 'other',
-            address: poi.address || undefined,
-            rating: poi.rating || undefined,
-            photo: poi.photo || undefined,
-            order: 0,
+            name: poi.name, placeId: poi.placeId, lat: poi.lat, lng: poi.lng,
+            category: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'other'].includes(poi.category) ? poi.category as any : 'other',
+            address: poi.address, rating: poi.rating, photo: poi.photo, order: 0,
         });
-
         if (savedTrip) {
             showMessage(`${poi.name} added to ${activeTrip.name} (Day ${activeDayIndex + 1})`);
-            sheetRef.current?.snapToIndex(1); // Open sheet to show it
-            return;
+            sheetRef.current?.snapToIndex(1);
+        } else {
+            showMessage('Could not add stop to this trip. Please try again.');
         }
-
-        showMessage('Could not add stop to this trip. Please try again.');
     };
 
     const openSource = useCallback(async (poi: POI) => {
         const url = poi.source === 'google_places'
-            ? (poi.placeId
-                ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(poi.placeId)}`
-                : `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`)
+            ? (poi.placeId ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(poi.placeId)}` : `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`)
             : `https://www.openstreetmap.org/?mlat=${poi.lat}&mlon=${poi.lng}#map=16/${poi.lat}/${poi.lng}`;
-
         try {
             const supported = await Linking.canOpenURL(url);
-            if (supported) {
-                await Linking.openURL(url);
-            } else {
-                showMessage('Could not open map link.');
-            }
-        } catch (error) {
-            console.error('Open source link error:', error);
-        }
+            if (supported) await Linking.openURL(url);
+            else showMessage('Could not open map link.');
+        } catch (error) { console.error(error); }
     }, [showMessage]);
-
-    const handleCategoryPress = useCallback(async (category: string) => {
-        const nextCategory = selectedCategory === category ? null : category;
-        setSelectedCategory(nextCategory);
-        setQuery('');
-
-        if (nextCategory) {
-            await runSearch(nextCategory);
-        }
-    }, [selectedCategory, runSearch]);
 
     const handleAddDay = async () => {
         if (!activeTrip) return;
         const newDayNumber = activeTrip.days.length + 1;
         const lastDay = activeTrip.days[activeTrip.days.length - 1];
         const newDate = lastDay ? new Date(lastDay.date) : new Date();
-        if (lastDay) {
-            newDate.setDate(newDate.getDate() + 1);
-        }
-
-        const newDay: Day = {
-            dayNumber: newDayNumber,
-            date: newDate.toISOString(),
-            stops: []
-        };
-
-        const newDays = [...activeTrip.days, newDay];
+        if (lastDay) newDate.setDate(newDate.getDate() + 1);
+        const newDays = [...activeTrip.days, { dayNumber: newDayNumber, date: newDate.toISOString(), stops: [] }];
         await updateTrip(activeTrip._id, { days: newDays });
         showMessage(`Day ${newDayNumber} added`);
         setActiveDay(newDays.length - 1);
     };
 
-    const handleStopPress = (stop: any) => {
-        setMode('map');
-        setSelectedPOI({
-            id: stop.placeId || stop._id || stop.name,
-            placeId: stop.placeId,
-            name: stop.name,
-            lat: stop.lat,
-            lng: stop.lng,
-            category: stop.category,
-            photo: stop.photo,
-            rating: stop.rating,
-            address: stop.address,
-            openingHours: stop.openingHours,
-            priceLevel: stop.priceLevel,
-        } as POI);
-        sheetRef.current?.snapToIndex(0);
+    const handleDeleteDay = async () => {
+        if (!activeTrip) return;
+        const currentDay = activeTrip.days[activeDayIndex];
+        if (currentDay.stops.length > 0) return;
+        const newDays = activeTrip.days.filter((_, idx) => idx !== activeDayIndex).map((d, idx) => ({ ...d, dayNumber: idx + 1 }));
+        await updateTrip(activeTrip._id, { days: newDays });
+        showMessage(`Day ${currentDay.dayNumber} deleted`);
+        setActiveDay(Math.max(0, activeDayIndex - 1));
     };
 
     const moveStop = async (index: number, direction: 'up' | 'down') => {
         if (!activeTrip) return;
         const day = activeTrip.days[activeDayIndex];
-        const stops = [...day.stops].sort((a, b) => a.order - b.order); // Guarantee sorted order
+        const stops = [...day.stops].sort((a, b) => a.order - b.order);
         if (direction === 'up' && index > 0) {
             [stops[index - 1], stops[index]] = [stops[index], stops[index - 1]];
         } else if (direction === 'down' && index < stops.length - 1) {
             [stops[index + 1], stops[index]] = [stops[index], stops[index + 1]];
-        } else {
-            return;
-        }
-        const stopOrder = stops.map(s => s._id!);
-        await reorderStops(activeTrip._id, activeDayIndex, stopOrder);
+        } else return;
+        await reorderStops(activeTrip._id, activeDayIndex, stops.map(s => s._id!));
     };
 
     const handleExpandStop = (stop: Stop) => {
@@ -289,67 +160,22 @@ export default function ExploreScreenV2() {
 
     const handleSaveStopDetails = async (stop: Stop) => {
         if (!activeTrip) return;
-
         let newExpenseId = stop.expenseId;
         const parsedCost = parseFloat(editCost);
-
         if (!isNaN(parsedCost) && parsedCost > 0) {
-            const expenseCategoryMapping: Record<string, 'accommodation' | 'food' | 'transport' | 'activities' | 'other'> = {
-                hotel: 'accommodation',
-                restaurant: 'food',
-                transport: 'transport',
-                activity: 'activities',
-                landmark: 'activities',
-                other: 'other',
-            };
-            const expCat = expenseCategoryMapping[stop.category] || 'other';
-
-            const expenseData = {
-                description: stop.name,
-                amount: parsedCost,
-                category: expCat,
-                date: activeTrip.days[activeDayIndex].date,
-                dayNumber: activeTrip.days[activeDayIndex].dayNumber,
-            };
-
-            if (newExpenseId) {
-                await updateExpense(activeTrip._id, newExpenseId, expenseData);
-            } else {
+            const expMap: any = { hotel: 'accommodation', restaurant: 'food', transport: 'transport', activity: 'activities', landmark: 'activities', other: 'other' };
+            const expCat = expMap[stop.category] || 'other';
+            const expenseData = { description: stop.name, amount: parsedCost, category: expCat, date: activeTrip.days[activeDayIndex].date, dayNumber: activeTrip.days[activeDayIndex].dayNumber };
+            if (newExpenseId) await updateExpense(activeTrip._id, newExpenseId, expenseData);
+            else {
                 const newExpense = await addExpense(activeTrip._id, expenseData);
-                if (newExpense) {
-                    newExpenseId = newExpense._id;
-                }
+                if (newExpense) newExpenseId = newExpense._id;
             }
         }
-
-        const updates: Partial<Stop> = {
-            arrivalTime: editTime,
-            duration: editDuration ? parseInt(editDuration) : undefined,
-            cost: !isNaN(parsedCost) ? parsedCost : undefined,
-            notes: editNotes,
-            expenseId: newExpenseId,
-        };
-
-        if (stop._id) {
-            await updateStop(activeTrip._id, activeDayIndex, stop._id, updates);
-        }
+        const updates: Partial<Stop> = { arrivalTime: editTime, duration: editDuration ? parseInt(editDuration) : undefined, cost: !isNaN(parsedCost) ? parsedCost : undefined, notes: editNotes, expenseId: newExpenseId };
+        if (stop._id) await updateStop(activeTrip._id, activeDayIndex, stop._id, updates);
         showMessage('Stop details saved');
         setExpandedStopId(null);
-    };
-
-    const handleDeleteDay = async () => {
-        if (!activeTrip) return;
-        const currentDay = activeTrip.days[activeDayIndex];
-        if (currentDay.stops.length > 0) return; // Only delete empty days
-
-        const newDays = activeTrip.days.filter((_, idx) => idx !== activeDayIndex).map((d, idx) => ({
-            ...d,
-            dayNumber: idx + 1 // Re-number subsequent days
-        }));
-
-        await updateTrip(activeTrip._id, { days: newDays });
-        showMessage(`Day ${currentDay.dayNumber} deleted`);
-        setActiveDay(Math.max(0, activeDayIndex - 1));
     };
 
     const handleMapMessage = (event: any) => {
@@ -357,571 +183,103 @@ export default function ExploreScreenV2() {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === 'PIN_CLICK' && data.id) {
                 const poi = results.find(r => r.id === data.id);
-                if (poi) {
-                    setSelectedPOI(poi);
-                }
+                if (poi) setSelectedPOI(poi);
             } else if (data.type === 'STOP_CLICK' && data.stop) {
-                const stop = data.stop;
-                setSelectedPOI({
-                    id: stop.id || stop._id || stop.name,
-                    placeId: stop.placeId,
-                    name: stop.name,
-                    lat: stop.lat,
-                    lng: stop.lng,
-                    category: stop.category,
-                    photo: stop.photo,
-                    rating: stop.rating,
-                    address: stop.address,
-                    openingHours: stop.openingHours,
-                    priceLevel: stop.priceLevel,
-                } as POI);
+                setSelectedPOI({ id: data.stop.id || data.stop._id || data.stop.name, placeId: data.stop.placeId, name: data.stop.name, lat: data.stop.lat, lng: data.stop.lng, category: data.stop.category, photo: data.stop.photo, rating: data.stop.rating, address: data.stop.address, openingHours: data.stop.openingHours, priceLevel: data.stop.priceLevel } as POI);
             }
         } catch (e) {
             console.error("Failed to parse map message", e);
         }
     };
 
-    const renderPriceLevel = (level?: number) => {
-        if (level === undefined) return null;
-        if (level === 0) return 'FREE';
-        return Array(level).fill('$').join('');
-    };
-
-    const renderPOICard = ({ item }: { item: POI }) => (
-        <Card style={[styles.poiCard, { backgroundColor: theme.colors.surface }]} mode="elevated">
-            {item.photo && (
-                <Card.Cover source={{ uri: item.photo }} style={styles.poiImage} />
-            )}
-            <Card.Content style={styles.poiContent}>
-                <View style={styles.poiHeader}>
-                    <View style={[styles.categoryBadge, { backgroundColor: CategoryColors[item.category] || '#95E1D3' }]}>
-                        <MaterialCommunityIcons
-                            name={(CategoryIcons[item.category] || 'map-marker') as any}
-                            size={14}
-                            color="#FFF"
-                        />
-                    </View>
-                    <Text variant="titleSmall" style={{ flex: 1, fontWeight: '700', color: theme.colors.onSurface }} numberOfLines={1}>
-                        {item.name}
-                    </Text>
-                    {item.rating && (
-                        <View style={styles.ratingContainer}>
-                            <MaterialCommunityIcons name="star" size={14} color="#FFD93D" />
-                            <Text variant="bodySmall" style={{ marginLeft: 2, fontWeight: '600', color: theme.colors.onSurface }}>
-                                {item.rating.toFixed(1)}
-                            </Text>
-                        </View>
-                    )}
-                </View>
-
-                {/* Badges for distance, hours, price */}
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                    {(item.openingHours === 'Open 24 hours' || item.openingHours) && (
-                        <Chip compact textStyle={{ fontSize: 10 }} icon="clock-outline" style={{ height: 24 }}>
-                            {Array.isArray(item.openingHours) ? 'Open Today' : (item.openingHours || 'Open')}
-                        </Chip>
-                    )}
-                    {item.priceLevel !== undefined && (
-                        <Chip compact textStyle={{ fontSize: 10 }} icon="cash" style={{ height: 24, backgroundColor: item.priceLevel === 0 ? '#E8F5E9' : undefined }}>
-                            {renderPriceLevel(item.priceLevel)}
-                        </Chip>
-                    )}
-                </View>
-
-                {item.address && (
-                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }} numberOfLines={2}>
-                        {item.address}
-                    </Text>
-                )}
-
-                <View style={styles.poiActions}>
-                    <Button
-                        mode="contained"
-                        compact
-                        onPress={() => handleAddToTrip(item)}
-                        icon="plus"
-                        style={{ flex: 1, marginRight: 8 }}
-                    >
-                        Add to Trip
-                    </Button>
-                    <Button
-                        mode="outlined"
-                        compact
-                        onPress={() => {
-                            setMode('map');
-                            setSelectedPOI(item);
-                        }}
-                        icon="map"
-                    >
-                        Map View
-                    </Button>
-                </View>
-            </Card.Content>
-        </Card>
-    );
-
-    const mapHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-      <style>
-        * { margin: 0; padding: 0; }
-        body { overflow: hidden; }
-        #map { width: 100%; height: 100vh; }
-        .custom-marker {
-          background-color: white;
-          border-radius: 50%;
-          border: 3px solid;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          font-size: 14px;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        }
-      </style>
-    </head>
-    <body>
-      <div id="map"></div>
-      <script>
-        var map = L.map('map').setView([${lat}, ${lng}], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-
-        var markers = [];
-        
-        // Render stops (strictly sorted by order)
-        var stops = ${JSON.stringify([...(activeTrip?.days[activeDayIndex]?.stops || [])].sort((a, b) => a.order - b.order).map((s, i) => ({
-        id: s._id,
-        placeId: s.placeId,
-        lat: s.lat,
-        lng: s.lng,
-        name: s.name,
-        category: s.category,
-        photo: s.photo,
-        rating: s.rating,
-        address: s.address,
-        openingHours: s.openingHours,
-        priceLevel: s.priceLevel,
-        order: i + 1,
-        color: CategoryColors[s.category] || '#95E1D3',
-    })))};
-
-        stops.forEach(function(stop) {
-            var icon = L.divIcon({
-                className: '',
-                html: '<div class="custom-marker" style="border-color: ' + stop.color + '; color: ' + stop.color + ';">' + stop.order + '</div>',
-                iconSize: [32, 32],
-                iconAnchor: [16, 16],
-            });
-            var marker = L.marker([stop.lat, stop.lng], { icon: icon }).addTo(map);
-            marker.on('click', function() {
-                if (window.ReactNativeWebView) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'STOP_CLICK', stop: stop }));
-                }
-            });
-            markers.push(marker);
-        });
-
-        // Draw polyline connecting stops
-        var routeGeoJSON = ${routeData?.geometry ? JSON.stringify(routeData.geometry) : 'null'};
-        if (routeGeoJSON) {
-            L.geoJSON(routeGeoJSON, {
-                style: {
-                    color: '#1B6EF3',
-                    weight: 4,
-                    opacity: 0.8,
-                    dashArray: null,
-                }
-            }).addTo(map);
-        } else if (stops.length >= 2) {
-            var latlngs = stops.map(function(s) { return [s.lat, s.lng]; });
-            L.polyline(latlngs, {
-                color: '#1B6EF3',
-                weight: 3,
-                opacity: 0.6,
-                dashArray: '8, 8',
-            }).addTo(map);
-        }
-
-        // Add selected POI if it exists
-        var selectedPOI = ${selectedPOI ? JSON.stringify({
-        id: selectedPOI.id,
-        lat: selectedPOI.lat,
-        lng: selectedPOI.lng,
-        name: selectedPOI.name,
-        color: CategoryColors[selectedPOI.category] || '#FF5722'
-    }) : 'null'};
-
-        if (selectedPOI) {
-            var icon = L.divIcon({
-                className: '',
-                html: '<div class="custom-marker" style="border-color: ' + selectedPOI.color + '; color: ' + selectedPOI.color + ';">' + '<div style="width:12px;height:12px;background-color:'+selectedPOI.color+';border-radius:50%;"></div>' + '</div>',
-                iconSize: [36, 36],
-                iconAnchor: [18, 18],
-            });
-            var marker = L.marker([selectedPOI.lat, selectedPOI.lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
-            markers.push(marker);
-        }
-
-        if (markers.length > 0) {
-            var group = L.featureGroup(markers);
-            map.fitBounds(group.getBounds().pad(0.1));
-        } else if (stops.length === 0 && !selectedPOI) {
-            // fallback center
-            map.setView([${lat}, ${lng}], 13);
-        }
-
-        // Route info box
-        var routeInfo = ${routeData ? JSON.stringify({ distance: routeData.distance, duration: routeData.duration }) : 'null'};
-        if (routeInfo) {
-            var infoDiv = L.control({ position: 'topright' });
-            infoDiv.onAdd = function() {
-                var div = L.DomUtil.create('div', 'leaflet-bar');
-                div.style.cssText = 'background:white;padding:8px 12px;border-radius:8px;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.2); margin-top: 10px; margin-right: 10px; font-weight: bold;';
-                var km = (routeInfo.distance).toFixed(1);
-                var mins = Math.round(routeInfo.duration / 60);
-                div.innerHTML = '🚗 ' + km + ' km · ' + mins + ' min';
-                return div;
-            };
-            infoDiv.addTo(map);
-        }
-      </script>
-    </body>
-    </html>
-  `;
-
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            {/* Header Area */}
-            <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.outlineVariant }]}>
-                <View style={styles.searchSection}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Searchbar
-                            placeholder="Search places..."
-                            value={query}
-                            onChangeText={setQuery}
-                            onSubmitEditing={searchPOI}
-                            style={[styles.searchbar, { backgroundColor: theme.colors.surfaceVariant, flex: 1 }]}
-                            inputStyle={{ fontSize: 15, minHeight: 0, paddingVertical: 0, alignSelf: 'center', marginTop: -2 }}
-                        />
-                        <IconButton
-                            icon={mode === 'list' ? 'map' : 'format-list-bulleted'}
-                            mode="contained-tonal"
-                            size={24}
-                            style={{ margin: 0, height: 48, width: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}
-                            onPress={() => setMode(mode === 'list' ? 'map' : 'list')}
-                        />
-                    </View>
+            <SearchBarSection
+                query={query} setQuery={setQuery}
+                onSearch={() => runSearch(lat, lng, undefined, false, showMessage)}
+                mode={mode} setMode={setMode}
+                selectedCategory={selectedCategory}
+                onCategoryPress={(cat) => {
+                    const nextCat = selectedCategory === cat ? null : cat;
+                    setSelectedCategory(nextCat);
+                    setQuery('');
+                    if (nextCat) runSearch(lat, lng, nextCat, false, showMessage);
+                }}
+            />
 
-                    {mode === 'list' && (
-                        <View style={styles.categoryRow}>
-                            {CATEGORIES.map((cat) => (
-                                <Chip
-                                    key={cat}
-                                    selected={selectedCategory === cat}
-                                    onPress={() => handleCategoryPress(cat)}
-                                    mode="flat"
-                                    style={[styles.catChip, selectedCategory === cat && { backgroundColor: CategoryColors[cat] + '30' }]}
-                                    textStyle={{ fontSize: 12, textTransform: 'capitalize' }}
-                                    icon={() => (
-                                        <MaterialCommunityIcons
-                                            name={(CategoryIcons[cat] || 'map-marker') as any}
-                                            size={16}
-                                            color={selectedCategory === cat ? CategoryColors[cat] : theme.colors.onSurfaceVariant}
-                                        />
-                                    )}
-                                >
-                                    {cat}
-                                </Chip>
-                            ))}
-                        </View>
-                    )}
-                </View>
-            </View>
-
-            {/* Main Content Area */}
             <View style={styles.content}>
                 {loading && !refreshing && mode === 'list' ? (
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="large" color={theme.colors.primary} />
-                        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}>
-                            Searching places...
-                        </Text>
+                        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}>Searching places...</Text>
                     </View>
                 ) : mode === 'list' ? (
                     <FlatList
                         data={results}
                         keyExtractor={(item) => item.id}
-                        renderItem={renderPOICard}
+                        renderItem={({ item }) => <POICard poi={item} onAdd={handleAddToTrip} onMap={(p) => { setMode('map'); setSelectedPOI(p); }} />}
                         contentContainerStyle={styles.list}
                         showsVerticalScrollIndicator={false}
-                        refreshControl={
-                            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />
-                        }
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => runSearch(lat, lng, undefined, true, showMessage)} colors={[theme.colors.primary]} />}
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
                                 <MaterialCommunityIcons name="compass-outline" size={64} color={theme.colors.primary} style={{ opacity: 0.4 }} />
-                                <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}>
-                                    Search for hotels, restaurants, or landmarks
-                                </Text>
+                                <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}>Search for hotels, restaurants, or landmarks</Text>
                             </View>
                         }
                     />
                 ) : (
                     <View style={{ flex: 1 }}>
-                        <WebView
-                            source={{ html: mapHtml }}
-                            style={{ flex: 1 }}
-                            javaScriptEnabled
-                            onMessage={handleMapMessage}
+                        <ExploreMapView
+                            lat={lat} lng={lng}
+                            dayStops={activeTrip?.days?.[activeDayIndex]?.stops || []}
+                            selectedPOI={selectedPOI}
+                            routeData={routeData}
+                            onMapMessage={handleMapMessage}
                         />
-                        {/* Map Mode Mini Card */}
-                        {selectedPOI && (() => {
-                            const isAdded = activeTrip?.days?.[activeDayIndex]?.stops?.some(s => s.placeId === selectedPOI.placeId || s._id === selectedPOI.id);
-                            return (
-                                <View style={styles.miniCardContainer}>
-                                    <Card style={[styles.poiCard, { backgroundColor: theme.colors.surface, marginBottom: 0 }]} mode="elevated">
-                                        {selectedPOI.photo && (
-                                            <Card.Cover source={{ uri: selectedPOI.photo }} style={{ height: 100 }} />
-                                        )}
-                                        <Card.Content style={styles.poiContent}>
-                                            <View style={styles.poiHeader}>
-                                                <View style={[styles.categoryBadge, { backgroundColor: CategoryColors[selectedPOI.category] || '#95E1D3' }]}>
-                                                    <MaterialCommunityIcons
-                                                        name={(CategoryIcons[selectedPOI.category] || 'map-marker') as any}
-                                                        size={14}
-                                                        color="#FFF"
-                                                    />
-                                                </View>
-                                                <Text variant="titleSmall" style={{ flex: 1, fontWeight: '700', color: theme.colors.onSurface }} numberOfLines={1}>
-                                                    {selectedPOI.name}
-                                                </Text>
-                                                {selectedPOI.rating && (
-                                                    <View style={styles.ratingContainer}>
-                                                        <MaterialCommunityIcons name="star" size={14} color="#FFD93D" />
-                                                        <Text variant="bodySmall" style={{ marginLeft: 2, fontWeight: '600', color: theme.colors.onSurface }}>
-                                                            {selectedPOI.rating.toFixed(1)}
-                                                        </Text>
-                                                    </View>
-                                                )}
-                                                <IconButton icon="close" size={20} onPress={() => setSelectedPOI(null)} style={{ margin: 0, marginLeft: 4 }} />
-                                            </View>
-
-                                            <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                                                {(selectedPOI.openingHours === 'Open 24 hours' || selectedPOI.openingHours) && (
-                                                    <Chip compact textStyle={{ fontSize: 10 }} icon="clock-outline" style={{ height: 24 }}>
-                                                        {Array.isArray(selectedPOI.openingHours) ? 'Open Today' : (selectedPOI.openingHours || 'Open')}
-                                                    </Chip>
-                                                )}
-                                                {selectedPOI.priceLevel !== undefined && (
-                                                    <Chip compact textStyle={{ fontSize: 10 }} icon="cash" style={{ height: 24, backgroundColor: selectedPOI.priceLevel === 0 ? '#E8F5E9' : undefined }}>
-                                                        {renderPriceLevel(selectedPOI.priceLevel)}
-                                                    </Chip>
-                                                )}
-                                            </View>
-
-                                            {selectedPOI.address && (
-                                                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }} numberOfLines={2}>
-                                                    {selectedPOI.address}
-                                                </Text>
-                                            )}
-
-                                            <View style={styles.poiActions}>
-                                                {!isAdded && (
-                                                    <Button mode="contained" compact onPress={() => handleAddToTrip(selectedPOI)} icon="plus" style={{ marginRight: 8 }}>
-                                                        Add
-                                                    </Button>
-                                                )}
-                                                <Button mode="outlined" compact onPress={() => openSource(selectedPOI)} style={{ flex: 1 }}>
-                                                    More Details
-                                                </Button>
-                                            </View>
-                                        </Card.Content>
-                                    </Card>
-                                </View>
-                            );
-                        })()}
+                        {selectedPOI && (
+                            <View style={styles.miniCardContainer}>
+                                <POICard
+                                    poi={selectedPOI}
+                                    isMini
+                                    isAdded={activeTrip?.days?.[activeDayIndex]?.stops?.some(s => s.placeId === selectedPOI.placeId || s._id === selectedPOI.id)}
+                                    onAdd={handleAddToTrip}
+                                    onMoreDetails={openSource}
+                                    onClose={() => setSelectedPOI(null)}
+                                />
+                            </View>
+                        )}
                     </View>
                 )}
             </View>
 
-            {/* Bottom Sheet for Itinerary */}
             {activeTrip && (
-                <BottomSheet
-                    ref={sheetRef}
-                    index={0}
+                <ItineraryBottomSheet
+                    sheetRef={sheetRef}
                     snapPoints={snapPoints}
-                    enablePanDownToClose={false}
-                    backgroundStyle={{ backgroundColor: theme.colors.surface, borderTopWidth: 1, borderTopColor: theme.colors.outlineVariant }}
-                    handleIndicatorStyle={{ backgroundColor: theme.colors.onSurfaceVariant }}
-                >
-                    <BottomSheetView style={styles.sheetHeader}>
-                        <Text variant="titleMedium" style={{ fontWeight: '700', color: theme.colors.onSurface }}>
-                            {activeTrip.name}
-                        </Text>
-                        <Button mode="text" compact onPress={() => router.push(`/trip/${activeTrip._id}`)}>
-                            Edit Trip
-                        </Button>
-                    </BottomSheetView>
-
-                    <View style={[styles.dayTabs, { backgroundColor: theme.colors.surface }]}>
-                        <BottomSheetFlatList
-                            horizontal
-                            data={activeTrip.days}
-                            keyExtractor={(item) => item._id || item.dayNumber.toString()}
-                            showsHorizontalScrollIndicator={false}
-                            renderItem={({ item, index }) => (
-                                <Chip
-                                    mode={activeDayIndex === index ? "flat" : "outlined"}
-                                    selected={activeDayIndex === index}
-                                    onPress={() => setActiveDay(index)}
-                                    style={{ marginRight: 8 }}
-                                    textStyle={{ fontSize: 12 }}
-                                >
-                                    Day {item.dayNumber}
-                                </Chip>
-                            )}
-                            ListFooterComponent={
-                                <Chip
-                                    mode="outlined"
-                                    onPress={handleAddDay}
-                                    style={{ marginRight: 8 }}
-                                    icon="plus"
-                                >
-                                    Add Day
-                                </Chip>
-                            }
-                        />
-                    </View>
-
-                    <BottomSheetFlatList
-                        data={activeTrip.days[activeDayIndex]?.stops ? [...activeTrip.days[activeDayIndex].stops].sort((a, b) => a.order - b.order) : []}
-                        keyExtractor={(item, index) => item._id || index.toString()}
-                        contentContainerStyle={styles.sheetList}
-                        renderItem={({ item, index }) => (
-                            <View style={styles.stopItemContainer}>
-                                <View style={styles.stopItem}>
-                                    <TouchableOpacity
-                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
-                                        onPress={() => handleStopPress(item)}
-                                    >
-                                        <View style={[styles.stopNumber, { backgroundColor: CategoryColors[item.category] || theme.colors.primary }]}>
-                                            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text variant="bodyMedium" style={{ fontWeight: '600' }} numberOfLines={1}>{item.name}</Text>
-                                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize' }}>{item.category}</Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                    <View style={styles.stopControls}>
-                                        <IconButton
-                                            icon={expandedStopId === item._id ? "chevron-up" : "chevron-down"}
-                                            size={20}
-                                            onPress={() => handleExpandStop(item)}
-                                            style={{ margin: 0, marginRight: -4 }}
-                                        />
-                                        <View style={styles.moveButtons}>
-                                            <IconButton
-                                                icon="menu-up"
-                                                size={20}
-                                                disabled={index === 0}
-                                                onPress={() => moveStop(index, 'up')}
-                                                style={styles.tightIcon}
-                                            />
-                                            <IconButton
-                                                icon="menu-down"
-                                                size={20}
-                                                disabled={index === (activeTrip.days[activeDayIndex]?.stops.length - 1)}
-                                                onPress={() => moveStop(index, 'down')}
-                                                style={styles.tightIcon}
-                                            />
-                                        </View>
-                                        <IconButton
-                                            icon="delete-outline"
-                                            iconColor={theme.colors.error}
-                                            size={20}
-                                            onPress={() => item._id && removeStop(activeTrip._id, activeDayIndex, item._id)}
-                                            style={{ margin: 0 }}
-                                        />
-                                    </View>
-                                </View>
-                                {expandedStopId === item._id && (
-                                    <View style={styles.expandedContent}>
-                                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-                                            <TextInput
-                                                label="Arrival (e.g. 10:00 AM)"
-                                                value={editTime}
-                                                onChangeText={setEditTime}
-                                                mode="outlined"
-                                                style={{ flex: 1, backgroundColor: theme.colors.surface }}
-                                                dense
-                                            />
-                                            <TextInput
-                                                label="Duration (mins)"
-                                                value={editDuration}
-                                                onChangeText={setEditDuration}
-                                                keyboardType="numeric"
-                                                mode="outlined"
-                                                style={{ flex: 1, backgroundColor: theme.colors.surface }}
-                                                dense
-                                            />
-                                        </View>
-                                        <TextInput
-                                            label="Estimated Cost ($)"
-                                            value={editCost}
-                                            onChangeText={setEditCost}
-                                            keyboardType="decimal-pad"
-                                            mode="outlined"
-                                            style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
-                                            dense
-                                        />
-                                        <TextInput
-                                            label="Notes (Optional)"
-                                            value={editNotes}
-                                            onChangeText={setEditNotes}
-                                            mode="outlined"
-                                            multiline
-                                            numberOfLines={2}
-                                            style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
-                                            dense
-                                        />
-                                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-                                            <Button mode="text" onPress={() => setExpandedStopId(null)}>Cancel</Button>
-                                            <Button mode="contained" onPress={() => handleSaveStopDetails(item)}>Save Details</Button>
-                                        </View>
-                                    </View>
-                                )}
-                            </View>
-                        )}
-                        ListEmptyComponent={
-                            <View style={styles.emptyStops}>
-                                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>No stops for this day yet.</Text>
-                                <Button
-                                    mode="text"
-                                    icon="delete"
-                                    textColor={theme.colors.error}
-                                    onPress={handleDeleteDay}
-                                    style={{ marginTop: 12 }}
-                                >
-                                    Delete Empty Day
-                                </Button>
-                            </View>
-                        }
-                    />
-                </BottomSheet>
+                    activeTrip={activeTrip as any}
+                    activeDayIndex={activeDayIndex}
+                    setActiveDay={setActiveDay}
+                    handleAddDay={handleAddDay}
+                    handleDeleteDay={handleDeleteDay}
+                    handleStopPress={(stop) => {
+                        setMode('map');
+                        setSelectedPOI({ id: stop._id || stop.name, placeId: stop.placeId, name: stop.name, lat: stop.lat, lng: stop.lng, category: stop.category as any, photo: stop.photo, rating: stop.rating, address: stop.address, openingHours: stop.openingHours, priceLevel: stop.priceLevel } as POI);
+                        sheetRef.current?.snapToIndex(0);
+                    }}
+                    moveStop={moveStop}
+                    removeStop={removeStop}
+                    expandedStopId={expandedStopId}
+                    handleExpandStop={handleExpandStop}
+                    editTime={editTime} setEditTime={setEditTime}
+                    editDuration={editDuration} setEditDuration={setEditDuration}
+                    editCost={editCost} setEditCost={setEditCost}
+                    editNotes={editNotes} setEditNotes={setEditNotes}
+                    handleSaveStopDetails={handleSaveStopDetails as any}
+                />
             )}
 
-            <Snackbar
-                visible={snackbarVisible}
-                onDismiss={() => setSnackbarVisible(false)}
-                duration={3000}
-                style={{ bottom: 80 }}
-            >
+            <Snackbar visible={snackbarVisible} onDismiss={() => setSnackbarVisible(false)} duration={3000} style={{ bottom: 80 }}>
                 {snackbarMessage}
             </Snackbar>
         </View>
@@ -930,35 +288,9 @@ export default function ExploreScreenV2() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { paddingBottom: 12, borderBottomWidth: 1, zIndex: 10 },
-    activeTripBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 6, marginBottom: 8 },
-    searchSection: { paddingHorizontal: 16, gap: 12 },
-    searchbar: { borderRadius: 12, elevation: 0, height: 48, justifyContent: 'center' },
-    categoryRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-    catChip: { borderRadius: 20 },
     content: { flex: 1 },
     list: { padding: 16, paddingBottom: 100 },
-    poiCard: { marginBottom: 12, borderRadius: 14, overflow: 'hidden' },
-    poiImage: { height: 140 },
-    poiContent: { padding: 12 },
-    poiHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    categoryBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-    ratingContainer: { flexDirection: 'row', alignItems: 'center' },
-    poiActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     emptyContainer: { alignItems: 'center', paddingTop: 60 },
     miniCardContainer: { position: 'absolute', bottom: 100, left: 16, right: 16, zIndex: 20 },
-
-    // Bottom Sheet styles
-    sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8 },
-    dayTabs: { paddingHorizontal: 16, paddingBottom: 16 },
-    sheetList: { paddingHorizontal: 16, paddingBottom: 24 },
-    stopItemContainer: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ccc' },
-    stopItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-    expandedContent: { paddingLeft: 48, paddingRight: 16, paddingBottom: 16 },
-    stopNumber: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    stopControls: { flexDirection: 'row', alignItems: 'center' },
-    moveButtons: { flexDirection: 'column', marginRight: -8 },
-    tightIcon: { margin: -6, width: 24, height: 24 },
-    emptyStops: { padding: 24, alignItems: 'center' },
 });
