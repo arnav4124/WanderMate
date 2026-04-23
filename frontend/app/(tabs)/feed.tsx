@@ -53,7 +53,7 @@ function FeedCard({ post, onLike, onClone }: { post: FeedPost; onLike: () => voi
                             labelStyle={{ fontSize: 12 }}
                             style={{ borderRadius: 20 }}
                         >
-                            {isFollowing ? 'Friends' : isPending ? 'Requested' : 'Add Friend'}
+                            {isFollowing ? 'Following' : isPending ? 'Requested' : 'Follow'}
                         </Button>
                     )}
                 </View>
@@ -162,7 +162,7 @@ export default function FeedScreen() {
                     }}
                     buttons={[
                         { value: 'discover', label: 'Discover', icon: 'compass' },
-                        { value: 'following', label: 'Friends', icon: 'account-group' },
+                        { value: 'following', label: 'Following', icon: 'account-multiple' },
                     ]}
                     style={styles.segmented}
                 />
