@@ -1,0 +1,59 @@
+@startuml stakeholder_viewpoint
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam rectangleBorderColor #333333
+skinparam nodesep 30
+skinparam ranksep 40
+
+title IEEE 42010 — Stakeholder-Concern-Viewpoint-View Mapping
+
+left to right direction
+
+rectangle "Stakeholders" as stakeholders #D1FAE5 {
+  component "End Users\n(Travellers)" as S1 #A7F3D0
+  component "Development\nTeam" as S2 #A7F3D0
+  component "Project\nSupervisor" as S3 #A7F3D0
+  component "System\nAdministrator" as S4 #A7F3D0
+  component "API Provider\n(Google/ORS)" as S5 #A7F3D0
+}
+
+rectangle "Key Concerns" as concerns #FEF3C7 {
+  component "C1: Usability &\nResponsiveness" as C1 #FDE68A
+  component "C2: Data Privacy\n& Security" as C2 #FDE68A
+  component "C3: Offline\nAvailability" as C3 #FDE68A
+  component "C4: Modifiability\n& Testability" as C4 #FDE68A
+  component "C5: Deployment\n& Operations" as C5 #FDE68A
+  component "C6: API Quota\nCompliance" as C6 #FDE68A
+  component "C7: Real-time\nCollaboration" as C7 #FDE68A
+}
+
+rectangle "Viewpoints" as viewpoints #DBEAFE {
+  component "VP1: Functional\nViewpoint" as VP1 #93C5FD
+  component "VP2: Information\nViewpoint" as VP2 #93C5FD
+  component "VP3: Deployment\nViewpoint" as VP3 #93C5FD
+  component "VP4: Development\nViewpoint" as VP4 #93C5FD
+}
+
+' Stakeholder -> Concern
+S1 --> C1
+S1 --> C3
+S1 --> C7
+S2 --> C4
+S3 --> C4
+S3 --> C6
+S4 --> C5
+S4 --> C2
+S5 --> C6
+
+' Concern -> Viewpoint
+C1 --> VP1
+C7 --> VP1
+C2 --> VP2
+C3 --> VP2
+C4 --> VP4
+C5 --> VP3
+C6 --> VP1
+
+@enduml
