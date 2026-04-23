@@ -256,7 +256,7 @@ Following IEEE 42010, we define four viewpoints. Each viewpoint provides convent
 
 \begin{enumerate}
   \item \textbf{Mobile Client} (React Native / Expo) --- all user interaction, Zustand state management (\code{tripStore}, \code{budgetStore}, \code{feedStore}, \code{authStore}, \code{activeTripStore}), Leaflet WebView map, and offline cache (\code{localCache}, \code{syncQueue}).
-  \item \textbf{API Gateway} (Node.js + Express) --- single backend entry point with middleware stack: \code{helmet()} security headers, \code{authenticate()} Firebase JWT verification (\code{middleware/auth.js}), \code{generalLimiter} (100~req/15~min), and \code{cacheMiddleware} response cache (\code{middleware/cache.js}).
+  \item \textbf{API Gateway} (Node.js + Express) --- single backend entry point with middleware stack: \code{helmet()} security headers, \code{cors()}, \code{express.json()}, \code{generalLimiter} (100~req/15~min), and route-level \code{authenticate()} Firebase JWT verification (\code{middleware/auth.js}).
   \item \textbf{POI \& Routing Service} (\code{TravelService} Facade) --- encapsulates \code{PlacesAdapter} (Google Places), \code{ORSAdapter} (OpenRouteService), and the disabled \code{OverpassAdapter} behind a unified interface with \code{node-cache} caching (30~min search, 24~hr details, 1~hr routes).
   \item \textbf{Itinerary \& Budget Engine} --- \code{Trip} and \code{Expense} Mongoose models, trip/budget routes, \code{TripController} with owner/collaborator authorization checks, \code{TripObserver} event emitter for Firebase sync.
   \item \textbf{Social Feed \& Community Service} --- \code{FeedPost} model with denormalised snapshots, feed pagination (\code{skip/limit}), publish/like/clone endpoints, follower graph (\code{User.followers[]}/\code{following[]}).
@@ -275,26 +275,27 @@ The runtime interactions follow five primary data flows: POI \& Route Query, Col
 \textbf{Model kinds:} Data model diagrams, data flow diagrams.
 \end{tcolorbox}
 
-\textbf{View:} WanderMate uses a \textbf{dual-database architecture}: MongoDB as the authoritative store for all domain data, and Firebase RTDB as a thin event layer carrying notification payloads only.
+\textbf{View:} WanderMate uses a \textbf{dual-database architecture}: MongoDB as the authoritative store for all domain data, and Firebase RTDB as a synchronization channel for real-time propagation.
 
 \textbf{MongoDB data model} (Mongoose ODM):
 \begin{itemize}
   \item \textbf{Trip} (\code{models/Trip.js}) --- nested document: \code{name}, \code{destination}, \code{startDate}, \code{endDate}, \code{owner} (Firebase UID), \code{collaborators[]} (UIDs), \code{days[]} $\rightarrow$ \code{stops[]} with \code{name}, \code{lat}, \code{lng}, \code{category}, \code{order}, \code{cost}, etc. Indexes: \code{(owner, createdAt)}, \code{(collaborators)}, \code{(isPublished, publishedAt)}.
-  \item \textbf{Expense} (\code{models/Expense.js}) --- separate collection, referenced by \code{trip} ObjectId. Fields: \code{description}, \code{amount}, \code{category} (accommodation | food | transport | activities | other), \code{date}, \code{paidBy}.
+  \item \textbf{Expense} (\code{models/Expense.js}) --- separate collection, referenced by \code{trip} ObjectId. Fields: \code{user}, \code{description}, \code{amount}, \code{currency}, \code{category} (accommodation | food | transport | activities | other), \code{date}, \code{dayNumber}, \code{splitAmong[]}. Indexes: \code{(trip, date)} and \code{(trip, user)}.
   \item \textbf{FeedPost} (\code{models/FeedPost.js}) --- denormalised snapshot: \code{trip} (ref), \code{author} (UID), \code{authorName}, \code{tripName}, \code{destination}, \code{duration}, \code{totalBudget}, \code{stopCount}, \code{likes[]} (UIDs), \code{likeCount}. Indexes on \code{createdAt}, \code{(author, createdAt)}, \code{likeCount}.
   \item \textbf{User} (\code{models/User.js}) --- \code{firebaseUid} (unique), \code{email}, \code{displayName}, \code{avatarUrl}, \code{followers[]} (UIDs), \code{following[]} (UIDs), \code{publishedTrips[]} (ObjectId refs). Indexes on \code{firebaseUid} and \code{email}.
 \end{itemize}
 
-\textbf{Firebase RTDB paths} (thin event layer):
+\textbf{Firebase RTDB paths} (sync layer):
 \begin{itemize}
-  \item \code{trips/\{tripId\}} --- carries \code{\{updatedAt, lastEditedBy\}} on every mutation. Written by \code{TripObserver} event handler (\code{services/tripObserver.js}).
+  \item \code{trips/\{tripId\}} --- carries a Firebase-safe snapshot of the full trip document on updates (including \code{updatedAt} and \code{lastEditedBy}). Written by \code{TripObserver} event handlers (\code{services/tripObserver.js}).
   \item \code{budgets/\{tripId\}/lastUpdate} --- timestamp written on expense mutations.
   \item \code{feed/\{postId\}} --- carries \code{\{author, tripName, createdAt\}} on publish.
 \end{itemize}
 
 \textbf{Data ownership and consistency:}
 \begin{itemize}
-  \item MongoDB is the \emph{single source of truth} for all complex queries (follower graphs, expense aggregations, feed pagination). Firebase is intentionally kept thin --- it does not store full documents.
+  \item MongoDB is the \emph{single source of truth} for all complex queries and all writes (follower graphs, expense aggregations, feed pagination, trip mutations).
+  \item Firebase RTDB is used as a synchronization channel: budget/feed paths carry lightweight notifications, while the trip path carries a server-produced trip snapshot for collaborator update propagation.
   \item The \code{TripObserver} (\code{services/tripObserver.js}) uses Node.js \code{EventEmitter} to decouple business logic from Firebase writes. The \code{TripController} emits events (\code{TRIP\_CREATED}, \code{TRIP\_UPDATED}, \code{TRIP\_DELETED}, \code{COLLABORATORS\_UPDATED}); the observer handles Firebase propagation.
   \item Client-side \code{localCache} (AsyncStorage) provides offline reads with infinite TTL; the \code{syncQueue} queues write operations for replay on reconnect.
 \end{itemize}
@@ -302,7 +303,7 @@ The runtime interactions follow five primary data flows: POI \& Route Query, Col
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{data_model.pdf}
-\caption{Information Viewpoint --- MongoDB data model (Mongoose schemas) and Firebase RTDB event paths. The four MongoDB collections (Trip, Expense, FeedPost, User) serve as the authoritative data store; the three Firebase paths carry lightweight event notifications only.}
+\caption{Information Viewpoint --- MongoDB data model (Mongoose schemas) and Firebase RTDB sync paths. The four MongoDB collections (Trip, Expense, FeedPost, User) serve as the authoritative data store; Firebase paths are used for real-time propagation (trip snapshot sync plus budget/feed notifications).}
 \label{fig:data-model}
 \end{figure}
 
@@ -331,7 +332,7 @@ Mobile Client & Android device / Expo Go & Built with Expo SDK 54 (managed workf
 \rowcolor{tablealtbg}
 API Gateway & Node.js process (single instance) & Entry point: \code{backend/src/index.js}. Listens on port 5000. All secrets loaded from \code{backend/.env}: \code{MONGODB\_URI}, \code{FIREBASE\_*} credentials, \code{GOOGLE\_PLACES\_API\_KEY}, \code{ORS\_API\_KEY}. Dev mode: \code{node --watch src/index.js}. \\
 
-MongoDB & MongoDB Atlas (cloud) & Connection via \code{MONGODB\_URI} in \code{.env}. Configured in \code{config/database.js} with Mongoose ODM (v9.4). Indexes pre-defined in model schemas for query performance. \\
+MongoDB & MongoDB Atlas (cloud) & Connection via \code{MONGODB\_URI} in \code{.env}. Configured in \code{config/database.js} with Mongoose ODM (v9.4.1). Indexes pre-defined in model schemas for query performance. \\
 
 \rowcolor{tablealtbg}
 Firebase RTDB & Google Cloud (managed) & Configured via \code{FIREBASE\_DATABASE\_URL}. Backend uses Firebase Admin SDK (singleton in \code{config/firebase.js}). Frontend uses Firebase JS SDK (singleton in \code{config/firebase.ts}) with AsyncStorage auth persistence. \\
@@ -416,18 +417,15 @@ API Providers & C6 (Quota Compliance) & VP1 (Functional) & NFR-06 \\
 \section{Architecture Decision Records (ADRs)}
 % ============================================================
 
-The following Architecture Decision Records document major design decisions using the \textbf{Nygard ADR template} (Title, Status, Context, Decision, Consequences). Each ADR is grounded in specific code artefacts and requirements from the WanderMate repository.
+The following Architecture Decision Records document major design decisions using the \textbf{Nygard ADR template} (Title, Context, Decision, Status, Consequences). Each ADR is grounded in specific code artefacts and requirements from the WanderMate repository.
 
 % -----------------------------------------------------------
-\subsection{ADR-001: Use Firebase Realtime Database as an Event Bus for Collaboration (Not as a Primary Data Store)}
+\subsection{ADR-001: Use Firebase Realtime Database as a Collaboration Sync Channel (Not as a Primary Data Store)}
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[adrbox]
 
-\textbf{\large ADR-001: Use Firebase RTDB as a Thin Event Layer}
-
-\vspace{0.4em}
-\textbf{Status:} \adrstatus{Accepted}
+\textbf{\large ADR-001: Use Firebase RTDB as a Collaboration Sync Channel}
 
 \vspace{0.6em}
 \textbf{Context}
@@ -450,19 +448,22 @@ We evaluated two architectural approaches:
 \vspace{0.6em}
 \textbf{Decision}
 
-We will use \textbf{MongoDB as the single source of truth} for all domain data and \textbf{Firebase RTDB as a thin event bus} that carries only notification payloads (timestamps and metadata), not full documents.
+We will use \textbf{MongoDB as the single source of truth} for all domain data and \textbf{Firebase RTDB as a collaboration synchronization channel}. Trip writes are persisted to MongoDB first, then propagated to Firebase for real-time client updates.
 
 Concretely:
 \begin{itemize}
   \item Backend route handlers persist all mutations to MongoDB via Mongoose models, then emit events on the \code{TripObserver} EventEmitter (\code{services/tripObserver.js}).
-  \item The \code{TripObserver} writes lightweight payloads to Firebase paths:
+  \item The \code{TripObserver} writes synchronization payloads to Firebase paths:
     \begin{itemize}
-      \item \code{trips/\{tripId\}} $\gets$ \code{\{name, destination, owner, updatedAt: Date.now()\}}
+      \item \code{trips/\{tripId\}} $\gets$ full Firebase-safe trip snapshot on updates (including \code{updatedAt} and \code{lastEditedBy})
       \item \code{budgets/\{tripId\}/lastUpdate} $\gets$ timestamp
       \item \code{feed/\{postId\}} $\gets$ \code{\{author, tripName, createdAt: Date.now()\}}
     \end{itemize}
-  \item Frontend stores subscribe via \code{onValue} listeners (\code{tripStore.subscribeTripUpdates()}, \code{budgetStore.subscribeBudgetUpdates()}) and, upon receiving a notification, re-fetch the full authoritative data from MongoDB via the API.
+  \item Frontend stores subscribe via \code{onValue} listeners (\code{tripStore.subscribeTripUpdates()}, \code{budgetStore.subscribeBudgetUpdates()}). For trip updates, \code{tripStore} applies the Firebase snapshot directly when its \code{updatedAt} is newer (last-write-wins).
 \end{itemize}
+
+\vspace{0.6em}
+\textbf{Status:} \adrstatus{Accepted}
 
 \vspace{0.6em}
 \textbf{Consequences}
@@ -471,13 +472,13 @@ Concretely:
 \begin{itemize}
   \item MongoDB remains the single source of truth, avoiding dual-write consistency issues.
   \item Complex queries (pagination, aggregations, graph traversals) are handled by MongoDB's query planner with proper indexes, not by Firebase's limited query model.
-  \item Firebase costs scale only with notification volume, not with data storage.
+  \item Clients receive trip updates without requiring an additional API re-fetch round trip.
   \item The \code{TripObserver} EventEmitter (\code{services/tripObserver.js}) decouples business logic from sync infrastructure --- route handlers call \code{tripEvents.emit('TRIP\_UPDATED', trip.\_id, req.user.uid)} (e.g., \code{tripController.js}, line~104) without knowing about Firebase at all.
 \end{itemize}
 
 \textbf{Negative:}
 \begin{itemize}
-  \item The re-fetch pattern (notification $\to$ API call $\to$ MongoDB read) adds one HTTP round-trip compared to a Firebase-primary approach where data would be pushed directly.
+  \item Writing full trip snapshots to Firebase on each update increases RTDB write payload size compared with metadata-only notifications.
   \item Two infrastructure dependencies (MongoDB + Firebase) instead of one; both must be operational for full functionality.
   \item Conflict resolution relies on last-write-wins timestamps (\code{updatedAt}) rather than Firebase's built-in conflict resolution; complex concurrent edits may lose intermediate states.
 \end{itemize}
@@ -487,7 +488,7 @@ Concretely:
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{adr001_event_flow.pdf}
-\caption{ADR-001 Sequence Diagram: collaborative edit flow. User~A mutates a stop via the API Gateway, which persists to MongoDB (source of truth), then emits a \code{TRIP\_UPDATED} event via \code{TripObserver}. The observer writes a lightweight notification to Firebase RTDB. User~B's \code{tripStore} receives the \code{onValue} callback and re-fetches the authoritative trip from MongoDB.}
+\caption{ADR-001 Sequence Diagram: collaborative edit flow. User~A mutates a stop via the API Gateway, which persists to MongoDB (source of truth), then emits a \code{TRIP\_UPDATED} event via \code{TripObserver}. The observer writes a Firebase-safe trip snapshot to Firebase RTDB. User~B's \code{tripStore} receives the \code{onValue} callback and applies the newer snapshot using last-write-wins checks.}
 \label{fig:adr001-sequence}
 \end{figure}
 
@@ -499,9 +500,6 @@ Concretely:
 
 \textbf{\large ADR-002: Backend API Gateway as Secret Vault and Policy Enforcement Point}
 
-\vspace{0.4em}
-\textbf{Status:} \adrstatus{Accepted}
-
 \vspace{0.6em}
 \textbf{Context}
 
@@ -509,7 +507,6 @@ WanderMate consumes multiple external APIs, including those with sensitive crede
 \begin{itemize}
   \item \textbf{Google Places API} --- requires a \code{GOOGLE\_PLACES\_API\_KEY} with billing enabled. If extracted from a mobile bundle, it could be used by attackers to make arbitrary calls, incurring cost.
   \item \textbf{OpenRouteService API} --- requires an \code{ORS\_API\_KEY} with a daily quota of 2,000 requests.
-  \item \textbf{Nominatim Geocoding API} --- strictly limits requests to 1 per second and requires a valid User-Agent, risking permanent IP bans if called freely from clients.
   \item \textbf{Nominatim Geocoding API} --- strictly limits requests to 1 per second and requires a valid User-Agent, risking permanent IP bans if called freely from clients.
   \item \textbf{Firebase Admin SDK} --- requires a private key (\code{FIREBASE\_PRIVATE\_KEY}) that grants unrestricted access to the Firebase project (database administration, user management, custom token generation).
 \end{itemize}
@@ -533,7 +530,7 @@ We will implement a \textbf{Node.js/Express API Gateway} (\code{backend/src/inde
   \item Applies a middleware stack on every request:
     \begin{itemize}
       \item \code{helmet()} --- sets security headers (\code{X-Content-Type-Options}, \code{X-Frame-Options}, \code{Strict-Transport-Security}, etc.).
-      \item \code{cors(\{origin: '*'\})} --- allows cross-origin requests from the Expo development server.
+      \item \code{cors()} --- enables cross-origin requests (configured by default middleware settings).
       \item \code{generalLimiter} --- 100 requests per 15 minutes per IP (\code{middleware/rateLimiter.js}, line~6).
       \item \code{authenticate} --- verifies the Firebase JWT bearer token via \code{admin.auth().verifyIdToken()} (\code{middleware/auth.js}, lines~8--23).
     \end{itemize}
@@ -548,14 +545,17 @@ The mobile client's \code{frontend/services/api.ts} configures a single Axios in
 
 \begin{verbatim}
   api.interceptors.request.use(async (config) => {
-      const { auth } = await import('../config/firebase');
-      const token = await auth.currentUser?.getIdToken();
+      const user = auth.currentUser;
+      const token = await user?.getIdToken();
       if (token) config.headers.Authorization = `Bearer ${token}`;
       return config;
   });
 \end{verbatim}
 
 The client has no knowledge of Google Places keys, ORS keys, or Firebase Admin credentials.
+
+\vspace{0.6em}
+\textbf{Status:} \adrstatus{Accepted}
 
 \vspace{0.6em}
 \textbf{Consequences}
@@ -591,9 +591,6 @@ The client has no knowledge of Google Places keys, ORS keys, or Firebase Admin c
 \begin{tcolorbox}[adrbox]
 
 \textbf{\large ADR-003: TravelService Facade with Interchangeable Adapter Strategies}
-
-\vspace{0.4em}
-\textbf{Status:} \adrstatus{Accepted}
 
 \vspace{0.6em}
 \textbf{Context}
@@ -631,12 +628,12 @@ We will implement a \code{TravelService} class (\code{services/travelService.js}
   \item \textbf{Facade interface:} Five public methods --- \code{searchPOI()}, \code{searchByCategory()}, \code{getPlaceDetails()}, \code{getRoute()}, \code{optimizeRoute()} --- abstract away all provider and caching logic.
   \item \textbf{Strategy adapters:} Three adapter classes, each wrapping a specific API behind a common normalised output:
     \begin{itemize}
-      \item \code{PlacesAdapter} (\code{services/placesAdapter.js}) --- 168 lines, wraps Google Places (Text Search, Nearby Search, Find Place, Place Details). Normalises responses via \code{\_normalize(place)} with category detection (\code{\_detectCategory(types)}).
-      \item \code{ORSAdapter} (\code{services/orsAdapter.js}) --- 240 lines, wraps ORS POI and routing endpoints. Normalises POIs via \code{\_normalizePOI(feature)}. Implements both simple routing (\code{/v2/directions}) and multi-stop optimization (\code{/optimization}).
-      \item \code{OverpassAdapter} (\code{services/overpassAdapter.js}) --- 115 lines, currently disabled. Uses mirror failover across multiple Overpass servers.
+      \item \code{PlacesAdapter} (\code{services/placesAdapter.js}) --- wraps Google Places (Text Search, Nearby Search, Find Place, Place Details). Normalises responses into the shared POI shape.
+      \item \code{ORSAdapter} (\code{services/orsAdapter.js}) --- wraps ORS POI and routing endpoints. Implements both simple routing (\code{/v2/directions}) and multi-stop optimization (\code{/optimization}).
+      \item \code{OverpassAdapter} (\code{services/overpassAdapter.js}) --- implemented but currently disabled.
     \end{itemize}
-  \item \textbf{Singleton:} A module-level instance (\code{let travelServiceInstance = null}) with a \code{getTravelService()} factory function ensures one instance is shared across all route modules.
-  \item \textbf{Caching:} A single \code{node-cache} instance inside the Facade applies per-method TTLs: 30~minutes for searches (\code{poi\_search\_*}), 24~hours for details (\code{poi\_details\_*}), 1~hour for routes (\code{route\_*}).
+  \item \textbf{Singleton:} A module-level instance (\code{let instance = null}) with a \code{getTravelService()} factory function ensures one instance is shared across all route modules.
+  \item \textbf{Caching:} A single \code{node-cache} instance inside the Facade applies per-method TTLs: 30~minutes for searches, 24~hours for details, 1~hour for routes, using key patterns such as \code{poi:*}, \code{cat:*}, \code{details:*}, and \code{route:*}.
   \item \textbf{Fallback chain:} \code{searchPOI()} attempts Google Places first, catches failures, and falls through to ORS:
   \begin{verbatim}
     results = await this.places.searchPOI(query, lat, lng, radius)
@@ -649,13 +646,16 @@ We will implement a \code{TravelService} class (\code{services/travelService.js}
 \end{enumerate}
 
 \vspace{0.6em}
+\textbf{Status:} \adrstatus{Accepted}
+
+\vspace{0.6em}
 \textbf{Consequences}
 
 \textbf{Positive:}
 \begin{itemize}
   \item \textbf{Provider independence:} Route handlers in \code{routes/poi.js} call \code{travelService.searchPOI()} (line~18) without knowing which provider responded. Adding Mapbox or HERE requires only a new adapter class and a registration line in the \code{TravelService} constructor.
   \item \textbf{Validated swappability:} The \code{OverpassAdapter} was disabled by commenting out its import in \code{travelService.js} --- zero changes to routes, stores, or UI components. This validates NFR-15.
-  \item \textbf{Centralized caching:} One \code{node-cache} instance serves all providers; no duplicate cache logic. Cache key generation uses method name + parameters (\code{poi\_search\_\$\{query\}\_\$\{lat\}\_\$\{lng\}}).
+  \item \textbf{Centralized caching:} One \code{node-cache} instance serves all providers; no duplicate cache logic. Cache key generation follows stable prefixed keys (for example: \code{poi:...}, \code{cat:...}, \code{details:...}, \code{route:...}).
   \item \textbf{Graceful degradation:} The fallback chain (Google $\to$ ORS $\to$ empty) is invisible to consumers, satisfying NFR-08.
 \end{itemize}
 
@@ -683,9 +683,6 @@ We will implement a \code{TravelService} class (\code{services/travelService.js}
 
 \textbf{\large ADR-004: Offline-First Client with AsyncStorage Cache and SyncQueue}
 
-\vspace{0.4em}
-\textbf{Status:} \adrstatus{Accepted}
-
 \vspace{0.6em}
 \textbf{Context}
 
@@ -712,9 +709,9 @@ We will implement an \textbf{offline-first architecture} using two modules in \c
   \item \textbf{\code{localCache}} --- a key-value cache backed by AsyncStorage with configurable TTL:
   \begin{verbatim}
     export const localCache = {
-      async get(key, maxAge = 3600000) { /* 1 hour default */ },
-      async set(key, data) { /* stores {data, timestamp} */ },
-      async clear(key) { /* removes entry */ }
+      async get(key, maxAgeMs = 3600000) { /* 1 hour default */ },
+      async set(key, data) { /* stores {data, cachedAt} */ },
+      async remove(key) { /* removes entry */ }
     };
   \end{verbatim}
   Every Zustand store method (e.g., \code{tripStore.fetchTrips()}) follows a try/catch pattern: attempt the API call, and on failure, read from \code{localCache} with infinite TTL (\code{Infinity}):
@@ -730,20 +727,23 @@ We will implement an \textbf{offline-first architecture} using two modules in \c
   \begin{verbatim}
     export const syncQueue = {
       async add(operation) {
-        const queue = await this.getQueue();
+        const queue = await this.getAll();
         queue.push({ ...operation, timestamp: Date.now(), id });
         await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
       },
       async flush() {
-        const queue = await this.getQueue();
-        for (const op of sorted) {
-          await api({ method: op.method, url: op.url, data: op.data });
+        const queue = await this.getAll();
+        for (const op of queue.sort((a,b) => a.timestamp - b.timestamp)) {
+          // replay POST/PUT/DELETE via api client
         }
       }
     };
   \end{verbatim}
-  When a write operation fails (network error), the store catches the exception and enqueues the mutation. The queue is flushed on reconnect via the Profile screen's ``Sync Offline Changes'' button, replaying operations in timestamp order.
+  When selected write operations fail (network error), the store catches the exception and enqueues the mutation. The queue is flushed on reconnect via the Profile screen's ``Sync Offline Changes'' button, replaying operations in timestamp order.
 \end{enumerate}
+
+\vspace{0.6em}
+\textbf{Status:} \adrstatus{Accepted}
 
 \vspace{0.6em}
 \textbf{Consequences}
@@ -762,7 +762,7 @@ We will implement an \textbf{offline-first architecture} using two modules in \c
   \item \textbf{Queue conflicts:} If two offline users make conflicting edits (e.g., both remove the same stop), the second flush will encounter a 404 or produce an inconsistent state. Last-write-wins resolves this but may silently discard one user's changes.
   \item \textbf{Manual sync trigger:} The queue does not auto-flush on reconnect in the current implementation; users must navigate to the Profile screen and tap ``Sync Offline Changes.'' This is a usability gap acknowledged for future improvement.
   \item \textbf{Queue growth during extended offline periods:} If a user remains offline for an extended period while making many edits, the \code{syncQueue} in AsyncStorage can grow unboundedly. Large queues increase both the flush duration and the probability of conflicts. A future improvement could cap the queue size or batch related mutations (e.g., multiple edits to the same stop) into a single consolidated operation.
-  \item \textbf{Deleted resource handling:} If a collaborator deletes a trip or stop while another user is offline, the offline user's queued mutations targeting that resource will receive 404 responses during flush. The current \code{flush()} implementation does not distinguish 404s from transient errors --- it stops replaying on the first failure, leaving remaining operations in the queue. Robust handling would require detecting 404/410 responses and discarding the corresponding stale operations.
+  \item \textbf{Deleted resource handling:} If a collaborator deletes a trip or stop while another user is offline, queued mutations targeting that resource will receive 404 responses during flush. The current \code{flush()} implementation keeps failed operations for future retries; robust handling could classify permanent errors (404/410) and discard stale operations automatically.
   \item \textbf{AsyncStorage performance:} Large trip documents serialised to JSON may incur noticeable read/write latency; AsyncStorage is not designed for high-frequency updates.
 \end{itemize}
 
@@ -790,7 +790,7 @@ The following table summarises all four ADRs and maps them to the stakeholder co
 \bottomrule
 \endfoot
 
-001 & Firebase RTDB as thin event bus, MongoDB as source of truth & \adrstatus{Accepted} & C7 (Real-time), C3 (Offline) & NFR-03 (sync $<$500ms), FR-20/21 (collaboration) \\
+001 & Firebase RTDB as collaboration sync channel; MongoDB as source of truth & \adrstatus{Accepted} & C7 (Real-time), C3 (Offline) & NFR-03 (sync $<$500ms), FR-20/21 (collaboration) \\
 
 \rowcolor{tablealtbg}
 002 & API Gateway with secret proxying & \adrstatus{Accepted} & C2 (Security), C6 (Quota) & NFR-11 (no client secrets), NFR-06 (quota), NFR-10 (HTTPS) \\
@@ -803,7 +803,7 @@ The following table summarises all four ADRs and maps them to the stakeholder co
 \end{longtable}
 
 \begin{tcolorbox}[notebox]
-  \textbf{Inter-ADR dependencies.} ADR-001 (Firebase as event bus) depends on ADR-002 (API Gateway) because the gateway is the component that writes events to Firebase after persisting to MongoDB. ADR-003 (Facade pattern) is implemented within the gateway defined by ADR-002. ADR-004 (offline-first) complements ADR-001 by providing a client-side persistence layer that bridges connectivity gaps.
+  \textbf{Inter-ADR dependencies.} ADR-001 (Firebase as collaboration sync channel) depends on ADR-002 (API Gateway) because the gateway is the component that writes synchronization updates to Firebase after persisting to MongoDB. ADR-003 (Facade pattern) is implemented within the gateway defined by ADR-002. ADR-004 (offline-first) complements ADR-001 by providing a client-side persistence layer that bridges connectivity gaps.
 \end{tcolorbox}
 
 % ============================================================
@@ -816,7 +816,7 @@ This document has presented the Architecture Framework for WanderMate following 
 
 \textbf{Nygard ADR documentation} captured four major design decisions:
 \begin{enumerate}
-  \item Using Firebase RTDB as a thin notification layer while MongoDB remains the authoritative data store (ADR-001).
+  \item Using Firebase RTDB as a collaboration synchronization channel while MongoDB remains the authoritative data store (ADR-001).
   \item Adopting the API Gateway pattern to protect secrets and centralise policy enforcement (ADR-002).
   \item Implementing the Facade + Strategy pattern for multi-provider POI access with caching and fallback (ADR-003).
   \item Building an offline-first client with AsyncStorage-backed caching and a persistent sync queue (ADR-004).

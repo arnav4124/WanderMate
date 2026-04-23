@@ -57,15 +57,19 @@ package "MongoDB Collections" #FEF3C7 {
   class Expense <<Document>> {
     _id : ObjectId
     trip : ObjectId {ref: Trip}
+    user : String {Firebase UID}
     description : String
     amount : Number {required}
+    currency : String
     category : enum [accommodation|food|
     .... transport|activities|other]
     date : Date
-    paidBy : String {Firebase UID}
+    dayNumber : Number
+    splitAmong : String[]
     ==
     **Indexes:**
-    (trip)
+    (trip, date)
+    (trip, user)
   }
 
   class FeedPost <<Document>> {
@@ -117,13 +121,13 @@ Trip "1" <-- "0..*" Expense : trip (ObjectId ref)
 Trip "1" <-- "0..*" FeedPost : trip (ObjectId ref)
 User "1" --> "0..*" Trip : owner (UID match)
 
-package "Firebase RTDB Paths\n(Thin Event Layer)" #FFF3E0 {
+package "Firebase RTDB Paths\n(Sync Layer)" #FFF3E0 {
   class "trips/{tripId}" as fbtrip <<Event>> {
+    _id : string
     updatedAt : timestamp
     lastEditedBy : string
-    name : string
-    destination : string
-    owner : string
+    days[] : object[]
+    ... : full trip snapshot
   }
 
   class "budgets/{tripId}/lastUpdate" as fbbudget <<Event>> {
@@ -137,7 +141,7 @@ package "Firebase RTDB Paths\n(Thin Event Layer)" #FFF3E0 {
   }
 }
 
-Trip .. fbtrip : mirrors\nmetadata only
+Trip .. fbtrip : mirrors\nserver-produced snapshot
 Expense .. fbbudget : triggers\non mutation
 FeedPost .. fbfeed : triggers\non publish
 
