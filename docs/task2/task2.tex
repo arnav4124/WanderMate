@@ -161,6 +161,13 @@ This document presents the \textbf{Architecture Framework} for WanderMate, struc
   \textbf{Notation.} Throughout this document, requirement identifiers (\reqid{NFR-06}, \reqid{FR-20}) refer to the requirements catalogue in the Task~1 deliverable. Code references use \code{monospace} font and point to files in the WanderMate repository.
 \end{tcolorbox}
 
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{c4_context.pdf}
+\caption{C4 Context Diagram: WanderMate system boundary showing the two internal components (Mobile App, API Gateway), five external systems (Google Places, ORS, Firebase Auth, Firebase RTDB, MongoDB Atlas), and two actor types (Traveller, Collaborator). All external API credentials reside exclusively on the backend.}
+\label{fig:c4-context}
+\end{figure}
+
 % ============================================================
 \section{Stakeholder Identification (IEEE 42010)}
 % ============================================================
@@ -292,6 +299,13 @@ The runtime interactions follow five primary data flows: POI \& Route Query, Col
   \item Client-side \code{localCache} (AsyncStorage) provides offline reads with infinite TTL; the \code{syncQueue} queues write operations for replay on reconnect.
 \end{itemize}
 
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{data_model.pdf}
+\caption{Information Viewpoint --- MongoDB data model (Mongoose schemas) and Firebase RTDB event paths. The four MongoDB collections (Trip, Expense, FeedPost, User) serve as the authoritative data store; the three Firebase paths carry lightweight event notifications only.}
+\label{fig:data-model}
+\end{figure}
+
 \subsubsection{VP3: Deployment Viewpoint}
 
 \begin{tcolorbox}[notebox]
@@ -325,6 +339,13 @@ Firebase RTDB & Google Cloud (managed) & Configured via \code{FIREBASE\_DATABASE
 Firebase Auth & Google Cloud (managed) & Providers: Email/Password, Google Sign-In (OAuth 2.0 via \code{expo-auth-session}). Web client ID configured in \code{frontend/config/env.ts}. \\
 
 \end{longtable}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{deployment_diagram.pdf}
+\caption{Deployment Viewpoint --- infrastructure topology showing the User Device (React Native app with AsyncStorage), Backend Server (Express + middleware + TravelService), MongoDB Atlas, Firebase services, and external API providers. All connections labelled with protocol and credential flow.}
+\label{fig:deployment}
+\end{figure}
 
 \subsubsection{VP4: Development Viewpoint}
 
@@ -463,6 +484,13 @@ Concretely:
 
 \end{tcolorbox}
 
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{adr001_event_flow.pdf}
+\caption{ADR-001 Sequence Diagram: collaborative edit flow. User~A mutates a stop via the API Gateway, which persists to MongoDB (source of truth), then emits a \code{TRIP\_UPDATED} event via \code{TripObserver}. The observer writes a lightweight notification to Firebase RTDB. User~B's \code{tripStore} receives the \code{onValue} callback and re-fetches the authoritative trip from MongoDB.}
+\label{fig:adr001-sequence}
+\end{figure}
+
 % -----------------------------------------------------------
 \subsection{ADR-002: Adopt the API Gateway Pattern with Server-side Secret Proxying}
 % -----------------------------------------------------------
@@ -547,6 +575,13 @@ The client has no knowledge of Google Places keys, ORS keys, or Firebase Admin c
 
 \end{tcolorbox}
 
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{adr002_gateway_stack.pdf}
+\caption{ADR-002 Component Diagram: API Gateway middleware pipeline and secret proxying flow. Requests from the mobile client pass through five middleware stages (helmet $\to$ cors $\to$ body parser $\to$ rate limiter $\to$ JWT auth) before reaching route handlers. External API keys are loaded from \code{.env} and injected by the TravelService Facade --- the mobile client never sees them.}
+\label{fig:adr002-gateway}
+\end{figure}
+
 % -----------------------------------------------------------
 \subsection{ADR-003: Implement the Facade + Strategy Pattern for Multi-provider POI Access}
 % -----------------------------------------------------------
@@ -630,6 +665,13 @@ We will implement a \code{TravelService} class (\code{services/travelService.js}
 \end{itemize}
 
 \end{tcolorbox}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.90\textwidth]{adr003_facade_decision.pdf}
+\caption{ADR-003 Component Diagram: the TravelService Facade receives calls from route handlers, checks the \code{node-cache}, and dispatches to the fallback chain (Google Places $\to$ ORS $\to$ empty array). All adapters normalise responses to a common POI interface. The OverpassAdapter is implemented but currently disabled.}
+\label{fig:adr003-facade}
+\end{figure}
 
 % -----------------------------------------------------------
 \subsection{ADR-004: Adopt an Offline-First Architecture with AsyncStorage and a Persistent Sync Queue}
@@ -721,6 +763,13 @@ We will implement an \textbf{offline-first architecture} using two modules in \c
 \end{itemize}
 
 \end{tcolorbox}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{adr004_offline_flow.pdf}
+\caption{ADR-004 Activity Diagram: offline-first read and write flows. \textbf{Read path:} API call attempted $\to$ on failure, \code{localCache} serves stale data with TTL = Infinity. \textbf{Write path:} API call attempted $\to$ on failure, mutation enqueued via \code{syncQueue.add()} and persisted in AsyncStorage. \textbf{Sync path:} on reconnect, \code{syncQueue.flush()} replays operations in timestamp order.}
+\label{fig:adr004-offline}
+\end{figure}
 
 % ============================================================
 \section{ADR Summary and Cross-references}

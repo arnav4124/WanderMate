@@ -1,0 +1,88 @@
+@startuml adr004_offline_flow
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam activityBackgroundColor #DBEAFE
+skinparam activityBorderColor #3B82F6
+skinparam activityDiamondBackgroundColor #FEF3C7
+skinparam activityDiamondBorderColor #F59E0B
+
+title ADR-004 — Offline-First Read & Write Flow
+
+|Offline-First READ Path|
+start
+:Zustand store method called\n(e.g. tripStore.fetchTrips());
+
+:Attempt **API call**\nvia Axios (services/api.ts);
+
+if (API call\nsucceeds?) then (yes)
+  #D1FAE5:Display fresh data\nfrom server;
+  :Update **localCache**\n(AsyncStorage)\nfor future offline access;
+  stop
+else (no / network error)
+  :Read from **localCache.get()**\nwith TTL = Infinity;
+endif
+
+if (Cache hit?) then (yes)
+  #FEF3C7:Display cached\n(possibly stale) data;
+  note right
+    User sees last-known
+    state rather than
+    a blank screen.
+  end note
+  stop
+else (no)
+  #FFF3E0:Show error state\nin UI;
+  stop
+endif
+
+|Offline-First WRITE Path|
+start
+:User performs mutation\n(e.g. addStop, removeStop);
+
+:Zustand store calls\nAPI endpoint;
+
+if (API call\nsucceeds?) then (yes)
+  #D1FAE5:Server updates MongoDB;
+  :TripObserver emits\nFirebase event;
+  :Update local state;
+  stop
+else (no / network error)
+  :Enqueue mutation in\n**syncQueue.add()**;
+  note right
+    Stored in AsyncStorage:
+    { method, url, data,
+      timestamp, id }
+  end note
+
+  :Update local state\noptimistically;
+
+  :Mutation persists in\nAsyncStorage queue;
+  stop
+endif
+
+|Reconnection & Sync|
+start
+:User taps "Sync Offline Changes"\non Profile screen;
+
+:Call **syncQueue.flush()**;
+
+:Load queue from AsyncStorage\nSort by timestamp (FIFO);
+
+while (Queue not empty?) is (yes)
+  :Replay next operation\nvia api({ method, url, data });
+
+  if (Replay succeeds?) then (yes)
+    :Remove from queue;
+  else (no)
+    :Keep in queue\nfor next attempt;
+    :break;
+  endif
+endwhile (done)
+
+:Queue cleared;
+:All stores re-fetch\nfresh data from API;
+stop
+
+@enduml

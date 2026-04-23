@@ -1,0 +1,144 @@
+@startuml data_model
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #333333
+skinparam classFontSize 12
+
+title Information Viewpoint — MongoDB Data Model (Mongoose Schemas)
+
+package "MongoDB Collections" #FEF3C7 {
+
+  class Trip <<Document>> {
+    _id : ObjectId
+    name : String {required}
+    destination : String {required}
+    startDate : Date {required}
+    endDate : Date {required}
+    coverImage : String
+    owner : String {Firebase UID}
+    collaborators : String[]
+    isPublished : Boolean
+    publishedAt : Date
+    status : enum [planning|active|completed]
+    ==
+    **Indexes:**
+    (owner, createdAt) desc
+    (collaborators)
+    (isPublished, publishedAt) desc
+  }
+
+  class Day <<Subdocument>> {
+    date : Date {required}
+    dayNumber : Number {required}
+    stops : Stop[]
+  }
+
+  class Stop <<Subdocument>> {
+    _id : ObjectId
+    name : String {required}
+    placeId : String
+    lat : Number {required}
+    lng : Number {required}
+    category : enum [hotel|restaurant|
+    .... landmark|activity|transport|other]
+    notes : String
+    order : Number {required}
+    arrivalTime : String
+    duration : Number (minutes)
+    cost : Number
+    address : String
+    rating : Number
+    photo : String
+  }
+
+  class Expense <<Document>> {
+    _id : ObjectId
+    trip : ObjectId {ref: Trip}
+    description : String
+    amount : Number {required}
+    category : enum [accommodation|food|
+    .... transport|activities|other]
+    date : Date
+    paidBy : String {Firebase UID}
+    ==
+    **Indexes:**
+    (trip)
+  }
+
+  class FeedPost <<Document>> {
+    _id : ObjectId
+    trip : ObjectId {ref: Trip}
+    author : String {Firebase UID}
+    authorName : String
+    authorAvatar : String
+    tripName : String
+    destination : String
+    coverImage : String
+    duration : Number (days)
+    participantCount : Number
+    totalBudget : Number
+    stopCount : Number
+    likes : String[] {UIDs}
+    likeCount : Number
+    ==
+    **Denormalised snapshot**
+    (independent of trip mutations)
+    **Indexes:**
+    (createdAt) desc
+    (author, createdAt) desc
+    (likeCount) desc
+  }
+
+  class User <<Document>> {
+    _id : ObjectId
+    firebaseUid : String {unique}
+    email : String {required}
+    displayName : String
+    avatarUrl : String
+    followers : String[] {UIDs}
+    following : String[] {UIDs}
+    followRequests : String[]
+    pendingFollowing : String[]
+    publishedTrips : ObjectId[] {ref: Trip}
+    ==
+    **Indexes:**
+    (firebaseUid) unique
+    (email)
+  }
+}
+
+' Relationships
+Trip *-- "1..*" Day : days[]
+Day *-- "0..*" Stop : stops[]
+Trip "1" <-- "0..*" Expense : trip (ObjectId ref)
+Trip "1" <-- "0..*" FeedPost : trip (ObjectId ref)
+User "1" --> "0..*" Trip : owner (UID match)
+
+package "Firebase RTDB Paths\n(Thin Event Layer)" #FFF3E0 {
+  class "trips/{tripId}" as fbtrip <<Event>> {
+    updatedAt : timestamp
+    lastEditedBy : string
+    name : string
+    destination : string
+    owner : string
+  }
+
+  class "budgets/{tripId}/lastUpdate" as fbbudget <<Event>> {
+    value : timestamp
+  }
+
+  class "feed/{postId}" as fbfeed <<Event>> {
+    author : string
+    tripName : string
+    createdAt : timestamp
+  }
+}
+
+Trip .. fbtrip : mirrors\nmetadata only
+Expense .. fbbudget : triggers\non mutation
+FeedPost .. fbfeed : triggers\non publish
+
+@enduml

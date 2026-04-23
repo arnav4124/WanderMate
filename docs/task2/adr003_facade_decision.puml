@@ -1,0 +1,71 @@
+@startuml adr003_facade_decision
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam componentBorderColor #333333
+skinparam rectangleBorderColor #333333
+
+title ADR-003 — Facade + Strategy: Provider Abstraction & Fallback Chain
+
+rectangle "Express Route Handler\n(routes/poi.js)" as route #DBEAFE {
+  component "GET /api/poi/search" as search #93C5FD
+  component "GET /api/poi/category/:cat" as cat #93C5FD
+  component "GET /api/poi/details/:id" as det #93C5FD
+}
+
+rectangle "TravelService Facade\n(services/travelService.js)" as facade #D1FAE5 {
+  component "searchPOI()" as sp #A7F3D0
+  component "searchByCategory()" as sc #A7F3D0
+  component "getPlaceDetails()" as gd #A7F3D0
+  component "node-cache\n(30min / 24hr / 1hr)" as cache #FDE68A
+
+  rectangle "Fallback Chain" as fallback #FFF3E0 {
+    component "1. Try Google\nPlaces" as f1 #FDE68A
+    component "2. catch → Try\nORS POI" as f2 #FDE68A
+    component "3. catch →\nReturn []" as f3 #FDE68A
+  }
+}
+
+rectangle "Strategy Adapters" as adapters #FEF3C7 {
+  component "PlacesAdapter\n(168 lines)\nRich data: photos,\nratings, hours" as pa #FDE68A
+  component "ORSAdapter\n(240 lines)\nBasic POI +\nRouting/Optimization" as oa #FDE68A
+  component "OverpassAdapter\n(115 lines)\nDisabled" as xa #E5E7EB
+}
+
+rectangle "Normalised Output" as output #EDE9FE {
+  component "POI { id, name,\nlat, lng, category,\nrating, source }" as poi #C4B5FD
+}
+
+' Connections
+search -down-> sp
+cat -down-> sc
+det -down-> gd
+
+sp -down-> cache : check cache first
+sc -down-> cache
+gd -down-> cache
+
+cache -down-> f1 : cache miss
+f1 -down-> pa
+f1 -right-> f2 : error or\nempty results
+f2 -down-> oa
+f2 -right-> f3 : error or\nempty results
+
+pa -down-> poi : _normalize()
+oa -down-> poi : _normalizePOI()
+xa .[dashed].> poi : _normalize()\n(disabled)
+
+note right of facade
+  **Single point of change**
+  for adding/removing providers.
+  
+  Route handlers never import
+  adapters directly.
+  
+  Validated: OverpassAdapter
+  disabled with zero changes
+  to routes or UI (NFR-15).
+end note
+
+@enduml

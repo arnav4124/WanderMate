@@ -1,0 +1,94 @@
+@startuml adr002_gateway_stack
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam rectangleBorderColor #333333
+skinparam componentBorderColor #333333
+skinparam nodesep 20
+skinparam ranksep 25
+
+title ADR-002 — API Gateway Middleware Stack & Secret Proxying
+
+rectangle "Mobile Client\n(React Native / Expo)" as client #DBEAFE {
+  component "Axios Instance\n(services/api.ts)" as axios #93C5FD
+  component "JWT Token\nInjection\n(interceptor)" as intercept #93C5FD
+}
+
+rectangle "API Gateway (backend/src/index.js)" as gateway #D1FAE5 {
+
+  rectangle "Middleware Pipeline" as pipeline {
+    component "1. helmet()\nSecurity Headers" as mw1 #E5E7EB
+    component "2. cors()\nCross-Origin" as mw2 #E5E7EB
+    component "3. express.json()\nBody Parser" as mw3 #E5E7EB
+    component "4. generalLimiter\n100 req / 15 min / IP" as mw4 #E5E7EB
+    component "5. authenticate()\nFirebase JWT verify" as mw5 #FEF3C7
+  }
+
+  rectangle "Route Handlers" as routes {
+    component "/api/trips" as r1 #A7F3D0
+    component "/api/poi" as r2 #A7F3D0
+    component "/api/budget" as r3 #A7F3D0
+    component "/api/feed" as r4 #A7F3D0
+    component "/api/users" as r5 #A7F3D0
+    component "/api/routes" as r6 #A7F3D0
+  }
+
+  rectangle "Business Logic" as logic {
+    component "TravelService\nFacade (Singleton)" as ts #FDE68A
+  }
+}
+
+database ".env Secret Vault" as env #FEF3C7 {
+  component "GOOGLE_PLACES_API_KEY" as k1
+  component "ORS_API_KEY" as k2
+  component "FIREBASE_PRIVATE_KEY" as k3
+  component "MONGODB_URI" as k4
+}
+
+cloud "External APIs" as external #EDE9FE {
+  component "Google Places" as gp #C4B5FD
+  component "OpenRouteService" as ors #C4B5FD
+}
+
+database "MongoDB Atlas" as mongo #FEF3C7
+database "Firebase RTDB" as firebase #FFF3E0
+
+' Flow
+axios -down-> intercept
+intercept -down-> mw1 : HTTPS +\nBearer JWT
+
+mw1 -down-> mw2
+mw2 -down-> mw3
+mw3 -down-> mw4
+mw4 -down-> mw5
+
+mw5 -down-> routes
+
+r2 -down-> ts
+r6 -down-> ts
+
+env -right-> ts : process.env.*
+
+ts -down-> gp : + API_KEY\n(server-side only)
+ts -down-> ors : + API_KEY\n(server-side only)
+
+routes -down-> mongo
+routes -down-> firebase
+
+note right of env
+  **Zero secrets in client bundle.**
+  All keys loaded from .env
+  via dotenv at startup.
+  Never transmitted to
+  the mobile client.
+end note
+
+note bottom of client
+  Client only knows:
+  • API_BASE_URL
+  • Firebase public config
+  (apiKey, projectId, etc.)
+end note
+
+@enduml

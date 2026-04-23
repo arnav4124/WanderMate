@@ -1,0 +1,67 @@
+@startuml c4_context
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam rectangleBorderColor #333333
+skinparam actorBorderColor #333333
+skinparam databaseBorderColor #333333
+skinparam cloudBorderColor #333333
+
+title C4 Context Diagram — WanderMate System Boundary
+
+' Actors
+actor "Traveller\n(End User)" as user #DBEAFE
+actor "Collaborator" as collab #DBEAFE
+
+' System
+rectangle "WanderMate System" as system #D1FAE5 {
+  component "Mobile App\n(React Native / Expo)" as mobile #A7F3D0
+  component "API Gateway\n(Node.js + Express)" as backend #A7F3D0
+}
+
+' External Systems
+cloud "Google Cloud\nPlatform" as gcp #EDE9FE {
+  component "Google Places\nAPI" as gplaces #C4B5FD
+  component "Firebase Auth" as fauth #C4B5FD
+  component "Firebase RTDB" as frtdb #C4B5FD
+}
+
+cloud "OpenRouteService" as orscloud #EDE9FE {
+  component "ORS Directions\n& POI API" as ors #C4B5FD
+}
+
+database "MongoDB\nAtlas" as mongo #FEF3C7
+
+cloud "OpenStreetMap" as osm #EDE9FE {
+  component "Tile Server\n(Leaflet maps)" as tiles #C4B5FD
+}
+
+' Relationships
+user -down-> mobile : Uses app to\nplan trips
+collab -down-> mobile : Co-edits shared\nitineraries
+
+mobile -down-> backend : REST API calls\n(HTTPS + JWT)
+mobile -right-> fauth : OAuth / Email\nauthentication
+mobile -right-> frtdb : Real-time\nlisteners (onValue)
+mobile -right-> tiles : Map tile\nrequests
+
+backend -down-> mongo : CRUD operations\n(Mongoose ODM)
+backend -right-> gplaces : POI search\n(proxied, + API key)
+backend -right-> ors : Routing &\nPOI fallback\n(proxied, + API key)
+backend -right-> frtdb : Event writes\n(Admin SDK)
+
+note bottom of backend
+  **Secret vault**: All API keys
+  stored server-side in .env.
+  Mobile client never sees
+  Google/ORS credentials.
+end note
+
+note right of mongo
+  Source of truth for:
+  Trips, Expenses,
+  FeedPosts, Users
+end note
+
+@enduml

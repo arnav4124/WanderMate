@@ -1,0 +1,77 @@
+@startuml adr001_event_flow
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBorderColor #333333
+skinparam sequenceParticipantBackgroundColor #DBEAFE
+skinparam sequenceParticipantBorderColor #3B82F6
+skinparam sequenceDividerBackgroundColor #F3F4F6
+
+title ADR-001 — Collaborative Edit Sequence (MongoDB Primary + Firebase Event Bus)
+
+participant "User A\n(Mobile Client)" as A #DBEAFE
+participant "API Gateway\n(Express)" as GW #D1FAE5
+participant "TripController" as TC #D1FAE5
+participant "MongoDB\n(Mongoose)" as DB #FEF3C7
+participant "TripObserver\n(EventEmitter)" as OBS #FFF3E0
+participant "Firebase\nRTDB" as FB #FFF3E0
+participant "User B\n(Mobile Client)" as B #DBEAFE
+
+A -> GW : PUT /api/trips/:id/days/0/stops/:stopId\n+ JWT Bearer Token
+activate GW
+
+GW -> GW : authenticate() — verify JWT
+GW -> TC : updateStop(req, res)
+activate TC
+
+TC -> DB : Trip.findById(id)
+activate DB
+DB --> TC : trip document
+deactivate DB
+
+TC -> TC : Authorization check:\ntrip.owner === req.user.uid ||\ntrip.collaborators.includes(req.user.uid)
+
+TC -> DB : Object.assign(stop, updates)\nawait trip.save()
+activate DB
+DB --> TC : saved trip
+deactivate DB
+
+== MongoDB updated (source of truth) ==
+
+TC -> OBS : tripEvents.emit(\n'TRIP_UPDATED', trip._id, req.user.uid)
+activate OBS
+
+TC --> GW : res.json(trip)
+deactivate TC
+GW --> A : 200 OK + updated trip JSON
+deactivate GW
+
+OBS -> FB : firebaseDB.ref('trips/' + tripId).set({\n  updatedAt: Date.now(),\n  lastEditedBy: userId\n})
+deactivate OBS
+
+== Firebase notification propagates ==
+
+FB -> B : onValue callback fires\n(tripStore.subscribeTripUpdates)
+activate B
+B -> GW : GET /api/trips/:id\n(re-fetch authoritative data)
+activate GW
+GW -> DB : Trip.findById(id)
+activate DB
+DB --> GW : latest trip document
+deactivate DB
+GW --> B : 200 OK + trip JSON
+deactivate GW
+B -> B : Compare updatedAt (LWW)\nUpdate local state
+deactivate B
+
+note over FB
+  Firebase carries only
+  {updatedAt, lastEditedBy}
+  — NOT the full document.
+  MongoDB remains the
+  single source of truth.
+end note
+
+@enduml

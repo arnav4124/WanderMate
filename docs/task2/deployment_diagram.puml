@@ -1,0 +1,69 @@
+@startuml deployment_diagram
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam nodeBorderColor #333333
+skinparam artifactBorderColor #333333
+
+title Deployment Viewpoint — Infrastructure Topology
+
+node "User Device\n(Android / Expo Go)" as device #DBEAFE {
+  artifact "React Native App\n(Expo SDK 54)" as app #93C5FD {
+    component "Expo Router\n(file-based nav)" as router
+    component "Zustand Stores\n(5 stores)" as stores
+    component "Leaflet WebView\n(map rendering)" as leaflet
+    component "AsyncStorage\n(localCache +\nsyncQueue)" as async
+  }
+  artifact "Firebase JS SDK" as fbsdk #FDE68A
+}
+
+node "Backend Server\n(Node.js Process)" as server #D1FAE5 {
+  artifact "Express App\n(port 5000)" as express #A7F3D0 {
+    component "Middleware Stack\n(helmet, cors,\nrateLimiter, auth)" as mw
+    component "Route Handlers\n(6 route modules)" as rh
+    component "TravelService\n(Facade + Cache)" as ts
+    component "TripObserver\n(EventEmitter)" as obs
+  }
+  artifact ".env" as dotenv #FDE68A
+  artifact "Firebase Admin\nSDK (Singleton)" as fadmin #FDE68A
+}
+
+cloud "MongoDB Atlas\n(Managed Cloud)" as mongo #FEF3C7 {
+  database "wandermate DB" as db {
+    collections "trips" as c1
+    collections "expenses" as c2
+    collections "feedposts" as c3
+    collections "users" as c4
+  }
+}
+
+cloud "Google Cloud Platform" as gcp #EDE9FE {
+  component "Firebase Auth\n(Email + Google OAuth)" as fauth #C4B5FD
+  database "Firebase RTDB\n(Event Bus)" as frtdb #C4B5FD
+  component "Google Places API" as gapi #C4B5FD
+}
+
+cloud "ORS Cloud" as orscloud #EDE9FE {
+  component "ORS API\n(Directions +\nOptimization)" as ors #C4B5FD
+}
+
+cloud "OSM Tile Servers" as osm #EDE9FE {
+  component "tile.openstreetmap.org" as osmtile #C4B5FD
+}
+
+' Connections
+app -down-> express : HTTPS\nREST API
+fbsdk -right-> fauth : Auth\nOAuth 2.0
+fbsdk -right-> frtdb : WebSocket\nonValue listeners
+
+express -down-> db : Mongoose\n(MONGODB_URI)
+ts -right-> gapi : HTTPS\n+ GOOGLE_PLACES_API_KEY
+ts -right-> ors : HTTPS\n+ ORS_API_KEY
+obs -right-> frtdb : HTTPS\nFirebase Admin SDK
+dotenv ..> ts : env vars
+dotenv ..> fadmin : env vars
+
+leaflet -right-> osmtile : HTTPS\ntile requests
+
+@enduml
