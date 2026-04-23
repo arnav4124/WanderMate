@@ -1,0 +1,48 @@
+@startuml caching_flow
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam activityBackgroundColor #DBEAFE
+skinparam activityBorderColor #3B82F6
+skinparam activityDiamondBackgroundColor #FEF3C7
+skinparam activityDiamondBorderColor #F59E0B
+
+title Multi-Layer Caching Flow
+
+start
+
+:Mobile Client sends request;
+
+if (L1: AsyncStorage\nClient Cache Hit?) then (yes)
+  #D1FAE5:Return cached data\nto UI immediately;
+  stop
+else (no)
+  :Forward request to\nAPI Gateway;
+endif
+
+if (L3: Express Middleware\nCache Hit?) then (yes)
+  #D1FAE5:Return cached\nHTTP response;
+  stop
+else (no)
+  :Forward to\nTravelService Facade;
+endif
+
+if (L2: node-cache\nService Cache Hit?) then (yes)
+  #D1FAE5:Return cached\nservice result;
+  stop
+else (no)
+  :Call External API\n(Google Places / ORS);
+  
+  :Store result in\nL2 Service Cache\n(TTL: 30min–24hr);
+  
+  :Store result in\nL3 Middleware Cache\n(TTL: 1hr);
+  
+  :Response sent to client;
+  
+  :Store in L1 Client Cache\n(AsyncStorage);
+  
+  stop
+endif
+
+@enduml

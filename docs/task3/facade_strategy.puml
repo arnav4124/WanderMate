@@ -1,0 +1,122 @@
+@startuml facade_strategy
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #333333
+skinparam classFontSize 12
+skinparam stereotypeFontSize 10
+skinparam linetype ortho
+
+title Facade + Strategy Pattern — TravelService UML Class Diagram
+
+package "API Layer (Clients)" #DBEAFE {
+  class "Express Route Handlers" as Routes <<Client>> {
+    GET /api/poi/search
+    GET /api/poi/category/:cat
+    GET /api/poi/details/:id
+    GET /api/routes/calculate
+    GET /api/routes/optimize
+  }
+}
+
+package "TravelService Facade" #D1FAE5 {
+  class TravelService <<Facade>> {
+    - places : PlacesAdapter
+    - ors : ORSAdapter
+    - cache : NodeCache
+    ==
+    + searchPOI(query, lat, lng, radius) : POI[]
+    + searchByCategory(category, lat, lng, radius) : POI[]
+    + getPlaceDetails(placeId, name, lat, lng) : PlaceDetail
+    + getRoute(coordinates, profile) : Route
+    + optimizeRoute(coordinates, profile) : Route
+    ==
+    {static} getTravelService() : TravelService
+    ..
+    //Singleton instance//
+    //Fallback: Google Places -> ORS -> empty//
+    //Caching: node-cache with per-method TTLs//
+  }
+}
+
+package "Strategy Adapters" #FEF3C7 {
+  class PlacesAdapter <<Strategy>> {
+    - apiKey : string
+    - baseUrl : string
+    ==
+    + searchPOI(query, lat, lng, radius) : POI[]
+    + searchByCategory(cat, lat, lng, radius) : POI[]
+    + getPlaceDetails(placeId) : PlaceDetail
+    + findPlaceAndGetDetails(name, lat, lng) : PlaceDetail
+    - _normalize(place) : POI
+    - _detectCategory(types) : string
+    - _getPhotoUrl(ref, maxWidth) : string
+  }
+
+  class ORSAdapter <<Strategy>> {
+    - apiKey : string
+    - baseUrl : string
+    ==
+    + searchPOI(query, lat, lng, radius) : POI[]
+    + searchByCategory(cat, lat, lng, radius) : POI[]
+    + getRoute(coordinates, profile) : Route
+    + optimizeRoute(coordinates, profile) : Route
+    - _normalizePOI(feature) : POI
+    - _detectCategory(categoryIds) : string
+  }
+
+  class OverpassAdapter <<Strategy>> #F3F4F6 {
+    <color:gray>//Currently Disabled//</color>
+    - mirrors : string[]
+    ==
+    + searchPOI(query, lat, lng, radius) : POI[]
+    + searchByCategory(cat, lat, lng, radius) : POI[]
+    - _normalize(element) : POI
+    - _detectCategory(tags) : string
+  }
+}
+
+package "Shared Data Contract" #EDE9FE {
+  class "Normalised POI" as POI <<interface>> {
+    id : string
+    name : string
+    lat : number
+    lng : number
+    category : string
+    address : string
+    rating : number
+    phone : string
+    website : string
+    source : string
+  }
+}
+
+Routes -down-> TravelService : uses\n(single instance)
+TravelService *-down-> PlacesAdapter : delegates\n(primary)
+TravelService *-down-> ORSAdapter : delegates\n(fallback + routing)
+TravelService ..down..> OverpassAdapter : delegates\n(disabled)
+
+PlacesAdapter .right.> POI : produces
+ORSAdapter .right.> POI : produces
+OverpassAdapter .right.> POI : produces
+
+note right of TravelService
+  **Singleton**: instantiated once
+  via getTravelService()
+
+  **Cache TTLs**:
+  * POI search: 30 min
+  * Place details: 24 hr
+  * Routes: 1 hr
+end note
+
+note bottom of OverpassAdapter
+  Entire file is commented out.
+  Can be re-enabled by importing
+  in TravelService constructor
+  (satisfies NFR-15).
+end note
+
+@enduml

@@ -1,0 +1,95 @@
+@startuml layered_architecture
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam rectangleBorderColor #333333
+skinparam nodesep 60
+skinparam ranksep 30
+
+title Four-Layer Architecture — Backend & Frontend
+
+rectangle "**Backend (Node.js / Express)**" as backend {
+
+  rectangle "**Presentation Layer**\nExpress Route Handlers" as bp #DBEAFE {
+    card "trips.js" as bt #E8F0FE
+    card "poi.js" as bpoi #E8F0FE
+    card "budget.js" as bbu #E8F0FE
+    card "feed.js" as bfe #E8F0FE
+    card "users.js" as bus #E8F0FE
+    card "routes.js" as bro #E8F0FE
+  }
+
+  rectangle "**Business Logic Layer**" as bb #D1FAE5 {
+    card "TravelService Facade" as bts #A7F3D0
+    card "TripObserver" as bto #A7F3D0
+  }
+
+  rectangle "**Data Access Layer**\nMongoose Models" as bd #FEF3C7 {
+    card "Trip" as mtrip #FDE68A
+    card "Expense" as mexp #FDE68A
+    card "FeedPost" as mfp #FDE68A
+    card "User" as muser #FDE68A
+  }
+
+  rectangle "**Infrastructure Layer**" as bi #F3F4F6 {
+    card "firebase.js" as bfb #E5E7EB
+    card "auth.js" as bauth #E5E7EB
+    card "cache.js" as bcache #E5E7EB
+    card "rateLimiter.js" as brl #E5E7EB
+  }
+}
+
+bp -[hidden]down-> bb
+bb -[hidden]down-> bd
+bd -[hidden]down-> bi
+
+bp -down-> bb : uses
+bb -down-> bd : queries
+bd -down-> bi : depends on
+
+
+rectangle "**Frontend (React Native / Expo)**" as frontend {
+
+  rectangle "**View Layer**\nScreens & Components" as fv #DBEAFE {
+    card "My Trips" as ft #E8F0FE
+    card "Explore" as fex #E8F0FE
+    card "Feed" as ffe #E8F0FE
+    card "Budget" as fbu #E8F0FE
+    card "Profile" as fpr #E8F0FE
+  }
+
+  rectangle "**State Management Layer**\nZustand Stores" as fs #D1FAE5 {
+    card "tripStore" as fts #A7F3D0
+    card "budgetStore" as fbs #A7F3D0
+    card "feedStore" as ffs #A7F3D0
+    card "authStore" as fas #A7F3D0
+  }
+
+  rectangle "**Service Layer**" as fse #FEF3C7 {
+    card "api.ts" as fapi #FDE68A
+    card "syncQueue.ts" as fsq #FDE68A
+    card "localCache" as flc #FDE68A
+  }
+
+  rectangle "**Infrastructure Layer**" as fi #F3F4F6 {
+    card "firebase.ts" as ffb #E5E7EB
+    card "AsyncStorage" as fas2 #E5E7EB
+    card "env.ts" as fenv #E5E7EB
+  }
+}
+
+fv -[hidden]down-> fs
+fs -[hidden]down-> fse
+fse -[hidden]down-> fi
+
+fv -down-> fs : subscribes
+fs -down-> fse : calls
+fse -down-> fi : depends on
+
+note bottom of backend
+  Dependencies flow **strictly downward**.
+  Upper layers never import from lower layers.
+end note
+
+@enduml

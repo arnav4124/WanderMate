@@ -1,0 +1,61 @@
+@startuml security_architecture
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam componentBackgroundColor #DBEAFE
+skinparam componentBorderColor #3B82F6
+skinparam rectangleBackgroundColor #D1FAE5
+skinparam rectangleBorderColor #10B981
+skinparam databaseBackgroundColor #FEF3C7
+skinparam databaseBorderColor #F59E0B
+skinparam cloudBackgroundColor #EDE9FE
+skinparam cloudBorderColor #8B5CF6
+
+title Security Architecture — Authentication & Secret Proxying
+
+package "Client Side" {
+  component [React Native\nMobile Client] as client #DBEAFE
+  component [Firebase\nAuthentication\n(OAuth / Email)] as fbauth #FFF3E0
+}
+
+package "API Gateway (Express)" {
+  component [helmet()\nSecurity Headers] as helmet #F3F4F6
+  component [authenticate()\nFirebase JWT\nVerification] as auth #F3F4F6
+  component [rateLimiter()\nPer-IP Throttle] as rate #F3F4F6
+  component [Route Handlers\n/api/poi, /api/trips\n/api/budget, etc.] as routes #D1FAE5
+  database ".env\nAPI Keys Vault" as env #FEF3C7
+}
+
+cloud "External APIs" {
+  component [Google Places\nAPI] as gplaces #EDE9FE
+  component [OpenRouteService\nAPI] as ors #EDE9FE
+}
+
+client -down-> fbauth : OAuth 2.0 /\nEmail+Password
+fbauth -up-> client : Firebase ID Token (JWT)
+
+client -right-> helmet : HTTPS +\nBearer JWT
+helmet -down-> auth
+auth -down-> rate
+rate -down-> routes
+
+routes -right-> gplaces : + GOOGLE_PLACES_API_KEY
+routes -right-> ors : + ORS_API_KEY
+env -up-> routes : loads secrets
+
+client -[hidden]right-> gplaces
+note bottom of client
+  **No API keys in client bundle**
+  Client only knows:
+  • Firebase config (public)
+  • Backend base URL
+end note
+
+note bottom of env
+  Server-side only.
+  Never transmitted
+  to mobile client.
+end note
+
+@enduml

@@ -1,0 +1,122 @@
+@startuml observer_pattern
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #333333
+skinparam classFontSize 12
+
+title Observer Pattern — Real-time Collaboration UML Class Diagram
+
+package "Backend Publishers" #D1FAE5 {
+  class TripObserver <<Publisher>> {
+    Extends Node.js EventEmitter
+    __
+    Events:
+    • TRIP_CREATED
+    • TRIP_UPDATED
+    • TRIP_DELETED
+    • COLLABORATORS_UPDATED
+    __
+    + emit(event, data)
+    + on(event, handler)
+  }
+
+  class "Trip Route Handlers" as TripRoutes <<Publisher>> {
+    POST /api/trips
+    PUT /api/trips/:id
+    DELETE /api/trips/:id
+    POST /api/trips/:id/collaborators
+    POST /api/trips/:id/days/:d/stops
+    __
+    Emits events on TripObserver
+    after every mutation
+  }
+
+  class "Budget Route Handlers" as BudgetRoutes <<Publisher>> {
+    POST /api/budget/:tripId
+    PUT /api/budget/:tripId/:expenseId
+    DELETE /api/budget/:tripId/:expenseId
+    __
+    Writes to Firebase
+    budgets/{tripId}/lastUpdate
+  }
+}
+
+package "Firebase Realtime Database\n(Event Bus / Subject)" #FFF3E0 {
+  class "Firebase RTDB" as Firebase <<Subject>> {
+    **Paths:**
+    • trips/{tripId}
+    • budgets/{tripId}/lastUpdate
+    • feed/{postId}
+    __
+    + ref(path) : DatabaseRef
+    + set(path, data) : void
+    + onValue(ref, callback) : Listener
+    + off(ref, event, listener) : void
+  }
+}
+
+package "Frontend Observers\n(Zustand Stores)" #DBEAFE {
+  class tripStore <<Observer>> {
+    + subscribeTripUpdates(tripId) : unsubscribe()
+    __
+    **onValue callback:**
+    • Compare updatedAt timestamps (LWW)
+    • Update currentTrip if remote is newer
+    • Update trips[] array
+    __
+    Returns cleanup function: off()
+  }
+
+  class budgetStore <<Observer>> {
+    + subscribeBudgetUpdates(tripId) : unsubscribe()
+    __
+    **onValue callback:**
+    • Re-fetch full budget from API
+    • Update expenses[] and summary
+    __
+    Returns cleanup function: off()
+  }
+
+  class authStore <<Observer>> {
+    + initialize() : unsubscribe()
+    __
+    **onAuthStateChanged callback:**
+    • Update firebaseUser
+    • Set isAuthenticated
+    • Fetch user profile if signed in
+    __
+    Returns cleanup function
+  }
+}
+
+TripRoutes -down-> TripObserver : emits events
+TripObserver -down-> Firebase : writes updated\ntrip document
+BudgetRoutes -down-> Firebase : writes\nlastUpdate timestamp
+
+Firebase -down-> tripStore : pushes via\nonValue listener
+Firebase -down-> budgetStore : pushes via\nonValue listener
+Firebase -down-> authStore : pushes via\nonAuthStateChanged
+
+note right of Firebase
+  **Thin event layer:**
+  Firebase carries events only.
+  MongoDB remains the source
+  of truth for all complex queries.
+  
+  **Conflict resolution:**
+  Last-Write-Wins (LWW)
+  via updatedAt timestamps.
+end note
+
+note bottom of tripStore
+  **Lifecycle Management:**
+  React components call subscribe
+  in useEffect() and invoke the
+  returned unsubscribe in cleanup
+  to prevent memory leaks.
+end note
+
+@enduml

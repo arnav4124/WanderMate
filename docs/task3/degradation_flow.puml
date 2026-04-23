@@ -1,0 +1,58 @@
+@startuml degradation_flow
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+
+title Graceful Degradation — Server-side & Client-side Fallback Chains
+
+|Server-side Provider Fallback|
+
+start
+
+:TravelService.searchPOI() called;
+
+:Call **Google Places API**;
+
+if (Google Places\nreturns results?) then (yes)
+  #D1FAE5:Return Google Places\nresults (with photos,\nratings, reviews);
+  stop
+else (no / error)
+  :Log warning;\nnote: .catch(err => [])
+endif
+
+:Call **ORS POI endpoint**\n(fallback provider);
+
+if (ORS returns\nresults?) then (yes)
+  #EDE9FE:Return ORS POI\nresults (basic data,\nno photos);
+  stop
+else (no / error)
+  #FEF3C7:Return empty array []\nUI shows "No results found";
+  stop
+endif
+
+|Client-side Offline Fallback|
+
+start
+
+:Zustand store method called\n(e.g. fetchTrips);
+
+:Attempt **API call**\nvia Axios;
+
+if (API call\nsucceeds?) then (yes)
+  #D1FAE5:Display fresh data\nfrom server;
+  :Update AsyncStorage\nlocalCache;
+  stop
+else (no / network error)
+  :Read from **localCache**\n(AsyncStorage);
+endif
+
+if (Cache hit?\n(data within TTL)) then (yes)
+  #FEF3C7:Display cached\n(possibly stale) data;
+  stop
+else (no / expired)
+  #FFF3E0:Show error message\nto user;
+  stop
+endif
+
+@enduml

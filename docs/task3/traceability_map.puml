@@ -1,0 +1,59 @@
+@startuml traceability_map
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam componentBorderColor #333333
+skinparam nodesep 40
+skinparam ranksep 60
+
+left to right direction
+
+title Traceability Map — Tactics, Patterns, and NFRs
+
+rectangle "Architectural\nTactics" as tacticbox #D1FAE5 {
+  component "T1: Multi-layer\nResponse Caching" as T1 #A7F3D0
+  component "T2: Authentication\n& Secret Proxying" as T2 #A7F3D0
+  component "T3: Rate Limiting\n& Throttling" as T3 #A7F3D0
+  component "T4: Graceful\nDegradation" as T4 #A7F3D0
+  component "T5: Separation\nof Concerns" as T5 #A7F3D0
+}
+
+rectangle "Design\nPatterns" as patternbox #DBEAFE {
+  component "P1: Facade +\nStrategy" as P1 #93C5FD
+  component "P2: Observer\nPattern" as P2 #93C5FD
+}
+
+rectangle "Non-Functional\nRequirements" as nfrbox #FEF3C7 {
+  component "NFR-01\nPerformance" as NFR01 #FDE68A
+  component "NFR-04\nScalability" as NFR04 #FDE68A
+  component "NFR-06\nQuota Compliance" as NFR06 #FDE68A
+  component "NFR-07/08\nAvailability" as NFR07 #FDE68A
+  component "NFR-10/11/12\nSecurity" as NFR11 #FDE68A
+  component "NFR-14/15\nModifiability" as NFR15 #FDE68A
+}
+
+' ── Tactic → Pattern (dashed) ──
+T1 --> P1
+T3 --> P1
+T4 --> P1
+T4 --> P2
+T5 --> P1
+T5 --> P2
+
+' ── Tactic → NFR ──
+T1 ---> NFR01
+T1 ---> NFR06
+T2 ---> NFR11
+T3 ---> NFR04
+T3 ---> NFR06
+T4 ---> NFR07
+T5 ---> NFR15
+
+' ── Pattern → NFR ──
+P1 --> NFR01
+P1 --> NFR06
+P1 --> NFR15
+P2 --> NFR07
+
+@enduml
