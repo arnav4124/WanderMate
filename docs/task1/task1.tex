@@ -301,7 +301,7 @@ Budget data shall synchronise across all collaborators on a shared trip in real 
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The social feed is backed by a dedicated \texttt{FeedPost} MongoDB collection with indexes on \texttt{createdAt} and \texttt{likeCount} for efficient pagination and sorting. Feed posts are denormalised snapshots (trip name, destination, budget summary, stop count) rather than live references, ensuring feed rendering is independent of trip mutations. Cursor-based pagination is implemented via \texttt{skip/limit} queries.
+  \textbf{Architectural significance.} The social feed is backed by a dedicated \texttt{FeedPost} MongoDB collection with indexes on \texttt{createdAt} and \texttt{likeCount} for efficient pagination and sorting. Feed posts are denormalised snapshots (trip name, destination, budget summary, stop count) rather than live references, ensuring feed rendering is independent of trip mutations. Offset-based pagination is implemented via page + \texttt{skip/limit} queries.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -320,7 +320,7 @@ Users shall be able to publish a completed trip to a public social feed. Each fe
 
 \rowcolor{tablealtbg}
 \reqid{FR-17} & Social Feed &
-Users shall be able to follow and unfollow other travellers, and browse a personalised ``Following'' feed filtered to posts by followed users. The feed screen provides a \texttt{SegmentedButtons} toggle between ``Discover'' (all posts) and ``Following'' modes. &
+Users shall be able to send follow requests, accept/deny incoming requests, and remove connections. The ``Following'' feed shall display posts only from users in the authenticated user's \texttt{following[]} list. The feed screen provides a \texttt{SegmentedButtons} toggle between ``Discover'' (all posts) and ``Following'' modes. &
 \high \\
 
 \reqid{FR-18} & Social Feed &
@@ -353,7 +353,7 @@ Users shall be able to clone any public itinerary into their own trip list as an
 \endfoot
 
 \reqid{FR-20} & Collaboration &
-Users shall be able to invite other registered users to co-edit a trip. The \texttt{POST /api/trips/:id/collaborators} endpoint adds a user's Firebase UID to the trip's \texttt{collaborators[]} array and broadcasts the update to Firebase. Changes by any collaborator propagate to all others in real time via Firebase \texttt{onValue} listeners in \texttt{tripStore.subscribeTripUpdates()}. &
+Users shall be able to invite other registered users to co-edit a trip. The \texttt{POST /api/trips/:id/collaborators} endpoint adds a user's Firebase UID to the trip's \texttt{collaborators[]} array only when the user is already connected (follower/following), then broadcasts the update to Firebase. Changes by any collaborator propagate to all others in real time via Firebase \texttt{onValue} listeners in \texttt{tripStore.subscribeTripUpdates()}. &
 \high \\
 
 \rowcolor{tablealtbg}
@@ -496,7 +496,7 @@ The API Gateway shall return a structured error response (HTTP 4xx/5xx with a JS
 \endfoot
 
 \reqid{NFR-10} & Security &
-All API communication between the mobile client and the backend shall use HTTPS; plaintext HTTP connections shall be rejected. &
+In production deployments, all API communication between the mobile client and the backend shall use HTTPS; plaintext HTTP connections shall be rejected. Local development may use HTTP on trusted local networks. &
 TLS 1.2$+$ enforced on all channels \\
 
 \rowcolor{tablealtbg}
@@ -593,7 +593,7 @@ Enforces the Facade + Strategy pattern as a hard maintainability requirement. Th
 \section{Subsystem Overview}
 % ============================================================
 
-WanderMate is decomposed into \textbf{six primary subsystems} and one cross-cutting infrastructure layer. Each subsystem is independently deployable and testable, communicates through well-defined interfaces, and maps directly to one or more functional requirement groups defined in Section~1.
+WanderMate is decomposed into \textbf{six primary logical subsystems} and one cross-cutting infrastructure layer. In the current implementation, these are modular boundaries within a single frontend app and a single backend service (not separately deployed services). They communicate through well-defined interfaces and map directly to one or more functional requirement groups defined in Section~1.
 
 The decomposition follows three guiding principles:
 \begin{itemize}
@@ -625,7 +625,7 @@ API Gateway, Firebase Realtime DB, Firebase Auth \\
 \textbf{API Gateway}\newline(Node.js + Express) &
 Single backend entry point. Proxies and authenticates all third-party API calls, enforces rate limits, applies caching, and serves trip/user/feed/budget data from MongoDB. Keeps all secrets server-side. &
 Express routes (\texttt{trips}, \texttt{users}, \texttt{feed}, \texttt{budget}, \texttt{poi}, \texttt{routes}), Firebase JWT middleware, \texttt{express-rate-limit}, \texttt{node-cache}, Mongoose models, Helmet security headers &
-Mobile Client, MongoDB, Google Places API, ORS \\
+Mobile Client, MongoDB, Firebase Admin SDK, Google Places API, ORS \\
 
 \textbf{POI \& Routing Service}\newline(TravelService Facade) &
 Encapsulates the dual-API POI strategy (Google Places as primary, ORS POI as fallback) and ORS route optimisation behind a single \texttt{TravelService} interface. Implements response caching and provider fallback. An Overpass adapter exists but is currently disabled. &
@@ -735,7 +735,7 @@ A \texttt{syncQueue} persists unsent mutations to AsyncStorage when the device i
 
 The social feed subsystem manages the public layer of WanderMate. When a user publishes a trip, the \texttt{POST /api/feed/publish/:tripId} endpoint creates a \texttt{FeedPost} document containing denormalised metadata: author name and avatar, trip name, destination, cover image, date range, duration, participant count, total budget (summed from expenses), and stop count. This denormalised snapshot approach ensures feed card rendering is independent of trip mutations. The trip is marked as published (\texttt{isPublished: true}) and added to the user's \texttt{publishedTrips[]} array. A Firebase event is written to \texttt{feed/\{postId\}} for real-time propagation.
 
-The feed endpoint supports pagination via \texttt{skip/limit} with two modes: ``Discover'' (all posts sorted by \texttt{createdAt}) and ``Following'' (posts by followed users only). The \texttt{feedStore} on the client manages pagination state and implements infinite scroll via \texttt{onEndReached}.
+The feed endpoint supports offset-based pagination via page + \texttt{skip/limit} with two modes: ``Discover'' (all posts sorted by \texttt{createdAt}) and ``Following'' (posts by followed users only). The \texttt{feedStore} on the client manages pagination state and implements infinite scroll via \texttt{onEndReached}.
 
 Like/unlike is implemented as a toggle: the \texttt{POST /api/feed/:postId/like} endpoint adds or removes the user's UID from the \texttt{likes[]} array and updates the denormalised \texttt{likeCount}.
 
@@ -803,7 +803,7 @@ Mobile Client (Explore screen) $\rightarrow$ API Gateway \texttt{/api/poi/search
 Collaborator A edits a stop on Mobile Client $\rightarrow$ \texttt{tripStore} calls API Gateway, which updates the Trip document in MongoDB and writes \texttt{\{updatedAt, lastEditedBy\}} to Firebase \texttt{trips/\{tripId\}} $\rightarrow$ Firebase broadcasts to all registered \texttt{onValue} listeners $\rightarrow$ Collaborator B's \texttt{tripStore} receives the event and re-fetches the trip from MongoDB via the API $\rightarrow$ UI re-renders with updated data. \\
 
 3 & Feed Publish &
-User taps ``Publish'' in Trip Detail screen $\rightarrow$ \texttt{feedStore.publishTrip()} calls \texttt{POST /api/feed/publish/:tripId} $\rightarrow$ backend creates \texttt{FeedPost} document with denormalised metadata, marks trip as published, adds to user's \texttt{publishedTrips[]}, writes event to Firebase \texttt{feed/\{postId\}} $\rightarrow$ feed cards appear for all users on next feed fetch; followers receive real-time notification through Firebase. \\
+User taps ``Publish'' in Trip Detail screen $\rightarrow$ \texttt{feedStore.publishTrip()} calls \texttt{POST /api/feed/publish/:tripId} $\rightarrow$ backend creates \texttt{FeedPost} document with denormalised metadata, marks trip as published, adds to user's \texttt{publishedTrips[]}, writes event to Firebase \texttt{feed/\{postId\}} $\rightarrow$ feed cards appear for all users on the next feed refresh/poll cycle. \\
 
 \rowcolor{tablealtbg}
 4 & Itinerary Clone &
