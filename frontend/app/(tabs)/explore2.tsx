@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Linking } from 'react-native';
-import { Text, useTheme, ActivityIndicator, Snackbar } from 'react-native-paper';
+import { Text, useTheme, ActivityIndicator, Snackbar, Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { useRouter, useNavigation } from 'expo-router';
@@ -27,7 +27,19 @@ export default function ExploreScreenV2() {
     const { activeTripId, activeDayIndex, setActiveDay } = useActiveTripStore();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-    const { lat, lng } = useLocation();
+    const location = useLocation();
+    const [mapLat, setMapLat] = useState(location.lat || '17.3616');
+    const [mapLng, setMapLng] = useState(location.lng || '78.4747');
+    const [viewMode, setViewMode] = useState<'itinerary' | 'discover'>('itinerary');
+    const [mapMoved, setMapMoved] = useState(false);
+    const searchCenterRef = useRef({ lat: mapLat, lng: mapLng, zoom: 13 });
+
+    useEffect(() => {
+        if (location.lat && location.lat !== '17.3616' && mapLat === '17.3616') {
+            setMapLat(location.lat);
+            setMapLng(location.lng);
+        }
+    }, [location.lat, location.lng]);
     const { query, setQuery, results, loading, refreshing, selectedCategory, setSelectedCategory, runSearch } = usePOISearch();
 
     const [mode, setMode] = useState<'list' | 'map'>('list');
@@ -181,14 +193,55 @@ export default function ExploreScreenV2() {
         setExpandedStopId(null);
     };
 
+    const handleSearchLocation = async () => {
+        if (!query) return;
+        // if user just searches, let's treat it as geocode first
+        try {
+            const { data } = await api.get('/poi/geocode', { params: { q: query } });
+            if (data && data.length > 0) {
+                const newLat = data[0].lat.toString();
+                const newLng = data[0].lng.toString();
+                setMapLat(newLat);
+                setMapLng(newLng);
+                setMode('map');
+                setViewMode('discover');
+                setQuery(''); // clear query after geocoding
+                
+                const cat = selectedCategory || 'landmark';
+                if (!selectedCategory) setSelectedCategory('landmark');
+                await runSearch(newLat, newLng, cat, false, showMessage);
+                return;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        // fallback POI search
+        runSearch(mapLat, mapLng, undefined, false, showMessage);
+    };
+
     const handleMapMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
-            if (data.type === 'PIN_CLICK' && data.id) {
+            if (data.type === 'REGION_CHANGE') {
+                searchCenterRef.current = { lat: data.lat.toString(), lng: data.lng.toString(), zoom: data.zoom || 13 };
+                setMapMoved(true);
+            } else if (data.type === 'POI_CLICK' && data.poi) {
+                setSelectedPOI(data.poi);
+                setMapLat(data.poi.lat.toString());
+                setMapLng(data.poi.lng.toString());
+                    searchCenterRef.current = { lat: data.poi.lat.toString(), lng: data.poi.lng.toString(), zoom: Math.max(searchCenterRef.current?.zoom || 15, 15) };
+            } else if (data.type === 'PIN_CLICK' && data.id) {
                 const poi = results.find(r => r.id === data.id);
-                if (poi) setSelectedPOI(poi);
+                if (poi) {
+                    setSelectedPOI(poi);
+                    setMapLat(poi.lat.toString());
+                    setMapLng(poi.lng.toString());
+                    searchCenterRef.current = { lat: poi.lat.toString(), lng: poi.lng.toString(), zoom: Math.max(searchCenterRef.current?.zoom || 15, 15) };
+                }
             } else if (data.type === 'STOP_CLICK' && data.stop) {
-                setSelectedPOI({ id: data.stop.id || data.stop._id || data.stop.name, placeId: data.stop.placeId, name: data.stop.name, lat: data.stop.lat, lng: data.stop.lng, category: data.stop.category, photo: data.stop.photo, rating: data.stop.rating, address: data.stop.address, openingHours: data.stop.openingHours, priceLevel: data.stop.priceLevel } as POI);
+                const stopPOI = { id: data.stop.id || data.stop._id || data.stop.name, placeId: data.stop.placeId, name: data.stop.name, lat: data.stop.lat, lng: data.stop.lng, category: data.stop.category, photo: data.stop.photo, rating: data.stop.rating, address: data.stop.address, openingHours: (data.stop as any).openingHours, priceLevel: (data.stop as any).priceLevel } as POI;
+                setSelectedPOI(stopPOI);
+                setMapLat(stopPOI.lat.toString()); setMapLng(stopPOI.lng.toString()); searchCenterRef.current = { lat: stopPOI.lat.toString(), lng: stopPOI.lng.toString(), zoom: Math.max(searchCenterRef.current?.zoom || 15, 15) };
             }
         } catch (e) {
             console.error("Failed to parse map message", e);
@@ -199,14 +252,14 @@ export default function ExploreScreenV2() {
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <SearchBarSection
                 query={query} setQuery={setQuery}
-                onSearch={() => runSearch(lat, lng, undefined, false, showMessage)}
+                onSearch={handleSearchLocation}
                 mode={mode} setMode={setMode}
                 selectedCategory={selectedCategory}
                 onCategoryPress={(cat) => {
                     const nextCat = selectedCategory === cat ? null : cat;
                     setSelectedCategory(nextCat);
                     setQuery('');
-                    if (nextCat) runSearch(lat, lng, nextCat, false, showMessage);
+                    if (nextCat) runSearch(mapLat, mapLng, nextCat, false, showMessage);
                 }}
             />
 
@@ -220,10 +273,10 @@ export default function ExploreScreenV2() {
                     <FlatList
                         data={results}
                         keyExtractor={(item) => item.id}
-                        renderItem={({ item }) => <POICard poi={item} onAdd={handleAddToTrip} onMap={(p) => { setMode('map'); setSelectedPOI(p); }} />}
+                        renderItem={({ item }) => <POICard poi={item} onAdd={handleAddToTrip} onMap={(p) => { setMode('map'); setSelectedPOI(p); setMapLat(p.lat.toString()); setMapLng(p.lng.toString()); searchCenterRef.current = { lat: p.lat.toString(), lng: p.lng.toString(), zoom: Math.max(searchCenterRef.current?.zoom || 15, 15) }; }} />}
                         contentContainerStyle={styles.list}
                         showsVerticalScrollIndicator={false}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => runSearch(lat, lng, undefined, true, showMessage)} colors={[theme.colors.primary]} />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => runSearch(mapLat, mapLng, undefined, true, showMessage)} colors={[theme.colors.primary]} />}
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
                                 <MaterialCommunityIcons name="compass-outline" size={64} color={theme.colors.primary} style={{ opacity: 0.4 }} />
@@ -234,12 +287,45 @@ export default function ExploreScreenV2() {
                 ) : (
                     <View style={{ flex: 1 }}>
                         <ExploreMapView
-                            lat={lat} lng={lng}
+                            lat={searchCenterRef.current ? searchCenterRef.current.lat : mapLat} 
+                            lng={searchCenterRef.current ? searchCenterRef.current.lng : mapLng}
+                            zoom={searchCenterRef.current ? searchCenterRef.current.zoom : 13}
+                            viewMode={viewMode}
+                            discoverPOIs={results}
                             dayStops={activeTrip?.days?.[activeDayIndex]?.stops || []}
                             selectedPOI={selectedPOI}
                             routeData={routeData}
                             onMapMessage={handleMapMessage}
                         />
+                        <View style={{ position: 'absolute', top: 16, right: 16, backgroundColor: theme.colors.surface, borderRadius: 12, elevation: 4, flexDirection: 'row', overflow: 'hidden', zIndex: 10 }}>
+                            <Button 
+                                mode={viewMode === 'itinerary' ? 'contained' : 'text'} 
+                                onPress={() => setViewMode('itinerary')}
+                                compact
+                                style={{ borderRadius: 0 }}
+                            >Itinerary</Button>
+                            <Button 
+                                mode={viewMode === 'discover' ? 'contained' : 'text'} 
+                                onPress={() => { 
+                                    setViewMode('discover'); 
+                                    if (results.length === 0) runSearch(searchCenterRef.current ? searchCenterRef.current.lat : mapLat, searchCenterRef.current ? searchCenterRef.current.lng : mapLng, selectedCategory, false, showMessage); 
+                                }}
+                                compact
+                                style={{ borderRadius: 0 }}
+                            >Discover</Button>
+                        </View>
+                        {mapMoved && viewMode === 'discover' && (
+                             <Button 
+                                mode="contained-tonal"
+                                style={{ position: 'absolute', top: 60, alignSelf: 'center', zIndex: 10 }}
+                                onPress={() => { setMapMoved(false); 
+                                    setMapLat(searchCenterRef.current.lat); 
+                                    setMapLng(searchCenterRef.current.lng);
+                                    const activeCat = selectedCategory || (query ? null : 'landmark');
+                                    if (!selectedCategory && !query) setSelectedCategory('landmark');
+                                    runSearch(searchCenterRef.current.lat, searchCenterRef.current.lng, activeCat, false, showMessage); }}
+                             >Search this area</Button>
+                        )}
                         {selectedPOI && (
                             <View style={styles.miniCardContainer}>
                                 <POICard
@@ -258,7 +344,7 @@ export default function ExploreScreenV2() {
 
             {activeTrip && (
                 <ItineraryBottomSheet
-                    sheetRef={sheetRef}
+                    sheetRef={sheetRef as any}
                     snapPoints={snapPoints}
                     activeTrip={activeTrip as any}
                     activeDayIndex={activeDayIndex}
@@ -267,7 +353,11 @@ export default function ExploreScreenV2() {
                     handleDeleteDay={handleDeleteDay}
                     handleStopPress={(stop) => {
                         setMode('map');
-                        setSelectedPOI({ id: stop._id || stop.name, placeId: stop.placeId, name: stop.name, lat: stop.lat, lng: stop.lng, category: stop.category as any, photo: stop.photo, rating: stop.rating, address: stop.address, openingHours: stop.openingHours, priceLevel: stop.priceLevel } as POI);
+                        setViewMode('itinerary');
+                        setSelectedPOI({ id: stop._id || stop.name, placeId: stop.placeId, name: stop.name, lat: stop.lat, lng: stop.lng, category: stop.category as any, photo: stop.photo, rating: stop.rating, address: stop.address, openingHours: (stop as any).openingHours, priceLevel: (stop as any).priceLevel } as POI);
+                                                                                                setMapLat(stop.lat.toString());
+                        setMapLng(stop.lng.toString());
+                        searchCenterRef.current = { lat: stop.lat.toString(), lng: stop.lng.toString(), zoom: Math.max(searchCenterRef.current?.zoom || 15, 15) };
                         sheetRef.current?.snapToIndex(0);
                     }}
                     moveStop={moveStop}

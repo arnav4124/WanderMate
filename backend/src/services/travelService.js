@@ -1,3 +1,4 @@
+const axios = require("axios");
 // const OverpassAdapter = require('./overpassAdapter');
 const PlacesAdapter = require('./placesAdapter');
 const ORSAdapter = require('./orsAdapter');
@@ -19,6 +20,23 @@ class TravelService {
     /**
      * Search POIs - uses Google Places to fetch photos and ratings, falls back to ORS
      */
+    async geocode(query) {
+        try {
+            const response = await axios.get("https://nominatim.openstreetmap.org/search", {
+                params: { q: query, format: "json", limit: 5 },
+                headers: { "User-Agent": "WanderMate/1.0" }
+            });
+            return response.data.map(item => ({
+                name: item.display_name,
+                lat: parseFloat(item.lat),
+                lng: parseFloat(item.lon)
+            }));
+        } catch (error) {
+            console.error("Geocoding error:", error);
+            return [];
+        }
+    }
+
     async searchPOI(query, lat, lng, radius = 5000, ignoreCache = false) {
         const cacheKey = `poi:${query}:${lat}:${lng}:${radius}`;
         if (!ignoreCache) {

@@ -4,8 +4,11 @@ import { POI, Day } from '@/types';
 import { CategoryColors } from '@/constants/theme';
 
 interface MapViewProps {
+    viewMode?: 'itinerary' | 'discover';
+    discoverPOIs?: POI[];
     lat: string;
     lng: string;
+    zoom?: number;
     dayStops: any[];
     selectedPOI: POI | null;
     routeData: any;
@@ -15,13 +18,17 @@ interface MapViewProps {
 export function ExploreMapView({
     lat,
     lng,
+    zoom = 13,
     dayStops,
     selectedPOI,
     routeData,
-    onMapMessage
+    onMapMessage,
+    viewMode = 'itinerary',
+    discoverPOIs = []
 }: MapViewProps) {
 
     const mapHtml = useMemo(() => {
+        const discStops = discoverPOIs.map(s => ({ ...s, color: CategoryColors[s.category] || '#95E1D3' }));
         const sortedStops = [...(dayStops || [])].sort((a, b) => a.order - b.order).map((s, i) => ({
             id: s._id,
             placeId: s.placeId,
@@ -78,7 +85,12 @@ export function ExploreMapView({
     <body>
       <div id="map"></div>
       <script>
-        var map = L.map('map').setView([${lat}, ${lng}], 13);
+        var initLat = ${lat};
+        var initLng = ${lng};
+        var initZoom = ${zoom};
+        var selPOI = ${JSON.stringify(selectedPoint)};
+        if (selPOI) { initLat = selPOI.lat; initLng = selPOI.lng; initZoom = Math.max(initZoom, 15); }
+        var map = L.map('map').setView([initLat, initLng], initZoom);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
         var markers = [];
@@ -134,35 +146,48 @@ export function ExploreMapView({
             markers.push(marker);
         }
 
-        if (markers.length > 0) {
-            var group = L.featureGroup(markers);
-            map.fitBounds(group.getBounds().pad(0.1));
-        } else if (stops.length === 0 && !selectedPOI) {
-            map.setView([${lat}, ${lng}], 13);
-        }
+        var viewMode = "${viewMode}";
 
         var routeInfo = ${JSON.stringify(routeInfo)};
-        if (routeInfo) {
-            var infoDiv = L.control({ position: 'topright' });
-            infoDiv.onAdd = function() {
-                var div = L.DomUtil.create('div', 'leaflet-bar');
-                div.style.cssText = 'background:white;padding:8px 12px;border-radius:8px;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.2); margin-top: 10px; margin-right: 10px; font-weight: bold;';
-                var km = (routeInfo.distance).toFixed(1);
-                var mins = Math.round(routeInfo.duration / 60);
-                div.innerHTML = '🚗 ' + km + ' km · ' + mins + ' min';
-                return div;
-            };
-            infoDiv.addTo(map);
+        var discStops = ${JSON.stringify(discStops)};
+        
+        if (viewMode === 'discover') {
+            discStops.forEach(function(stop) {
+                var icon = L.divIcon({
+                    className: '',
+                    html: '<div class="custom-marker" style="border-color: ' + stop.color + '; color: ' + stop.color + ';"><div style="width:8px;height:8px;background-color:'+stop.color+';border-radius:50%;"></div></div>',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                });
+                var marker = L.marker([stop.lat, stop.lng], { icon: icon }).addTo(map);
+                marker.on('click', function() {
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'POI_CLICK', poi: stop }));
+                    }
+                });
+                markers.push(marker);
+            });
         }
+        
+        map.on('moveend', function() {
+            var center = map.getCenter();
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'REGION_CHANGE', lat: center.lat, lng: center.lng, zoom: map.getZoom() }));
+            }
+        });
+        
+        
       </script>
     </body>
     </html>
   `;
-    }, [lat, lng, dayStops, selectedPOI, routeData]);
+    }, [lat, lng, zoom, dayStops, selectedPOI, routeData, viewMode, discoverPOIs]);
+
+    const source = useMemo(() => ({ html: mapHtml }), [mapHtml]);
 
     return (
         <WebView
-            source={{ html: mapHtml }}
+            source={source}
             style={{ flex: 1 }}
             javaScriptEnabled
             onMessage={onMapMessage}

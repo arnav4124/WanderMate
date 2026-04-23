@@ -61,6 +61,18 @@ router.get('/category/:category', externalApiLimiter, async (req, res) => {
     }
 });
 
+// GET /api/poi/geocode?q=query
+router.get("/geocode", externalApiLimiter, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.status(400).json({ error: "q is required" });
+    const results = await travelService.geocode(q);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to geocode" });
+  }
+});
+
 // GET /api/poi/details/:placeId?name=&lat=&lng=
 router.get('/details/:placeId', externalApiLimiter, async (req, res) => {
     try {
