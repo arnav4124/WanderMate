@@ -205,13 +205,13 @@ Users shall be able to perform undo and redo on itinerary editing actions (add s
 \bottomrule
 \endfoot
 
-\reqid{FR-05} & POI Discovery &
-Users shall be able to search for hotels, restaurants, landmarks, and activities by keyword and category. The primary search is served by the Google Places Text Search and Nearby Search APIs; when Google Places returns zero results, the system falls back to the ORS POI endpoint. &
+\reqid{FR-05} & POI Discovery (Proximity Sort) &
+Users shall be able to intelligently search for POIs contextually bound to their map viewport and active trip. Search results are computationally sorted via a backend Haversine formula calculation for exact proximity, capping at 15 items for queries and 20 for explicit category selections. &
 \high \\
 
 \rowcolor{tablealtbg}
-\reqid{FR-06} & POI Discovery &
-The system shall display ratings, photos, opening hours, and price levels for each POI via the Google Places API. The \texttt{PlacesAdapter} normalises these fields into a common \texttt{POI} interface shared across all providers. &
+\reqid{FR-06} & POI Discovery (Categories) &
+The system shall support 13+ rich POI categories (e.g., Shopping, Nightlife, Medical, Grocery, Finance) individually mapped to appropriate ORS tags and Google Places descriptors, rendering colour-coded interactive map markers with embedded details. &
 \high \\
 
 \reqid{FR-07} & POI Discovery &
@@ -699,7 +699,7 @@ A global error handler ensures structured JSON error responses for all failure s
 
 \subsubsection{POI \& Routing Service (TravelService Facade)}
 
-This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes five methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, \texttt{getRoute(coordinates, profile)}, and \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver). Internally, two active adapters implement provider-specific API logic:
+This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes five methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)} (both of which now sort outputs by a calculated Haversine proximity distance capped at fixed thresholds), \texttt{geocode(query)} (implementing a strict 5000ms Nominatim timeout before gracefully failing over to Google Places), \texttt{getRoute(coordinates, profile)}, and \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver, now protected by a 35s frontend timeout ceiling). Internally, two active adapters implement provider-specific API logic:
 
 \begin{itemize}
   \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Quota-sensitive: 5\,000 req/month on free tier.
