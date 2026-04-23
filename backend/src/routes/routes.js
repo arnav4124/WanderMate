@@ -17,13 +17,13 @@ router.post('/calculate', externalApiLimiter, async (req, res) => {
         const route = await travelService.getRoute(coordinates, profile || 'driving-car');
 
         if (!route) {
-            return res.status(500).json({ error: 'Failed to calculate route' });
+            return res.status(200).json(null); // Fallback gracefully
         }
 
         res.json(route);
     } catch (error) {
         console.error('Route calculation error:', error);
-        res.status(500).json({ error: 'Failed to calculate route' });
+        res.status(200).json(null); // Fallback gracefully
     }
 });
 
@@ -39,13 +39,13 @@ router.post('/optimize', externalApiLimiter, async (req, res) => {
         const route = await travelService.optimizeRoute(coordinates, profile || 'driving-car');
 
         if (!route) {
-            return res.status(500).json({ error: 'Failed to optimize route' });
+            return res.status(200).json(null); // Return 200 with null to fallback gracefully without red errors
         }
 
         res.json(route);
     } catch (error) {
         console.error('Route optimization error:', error);
-        res.status(500).json({ error: 'Failed to optimize route' });
+        res.status(200).json(null); // Fallback gracefully
     }
 });
 

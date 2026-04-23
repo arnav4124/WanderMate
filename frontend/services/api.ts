@@ -8,7 +8,7 @@ import { API_BASE_URL } from '../config/env';
  */
 const api = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 15000,
+    timeout: 35000, // Increased timeout to prevent dropping slow route optimizations
     headers: {
         'Content-Type': 'application/json',
     },

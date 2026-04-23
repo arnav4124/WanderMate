@@ -13,13 +13,17 @@ class PlacesAdapter {
 
     async searchPOI(query, lat, lng, radius = 5000) {
         try {
+            const params = {
+                query: query,
+                key: this.apiKey,
+            };
+            if (lat !== null && lng !== null) {
+                params.location = `${lat},${lng}`;
+                params.radius = radius;
+            }
+
             const response = await axios.get(`${this.baseUrl}/textsearch/json`, {
-                params: {
-                    query: query,
-                    location: `${lat},${lng}`,
-                    radius,
-                    key: this.apiKey,
-                },
+                params,
                 timeout: 10000,
             });
 
@@ -41,7 +45,15 @@ class PlacesAdapter {
             hotel: 'lodging',
             restaurant: 'restaurant',
             landmark: 'tourist_attraction',
-            activity: 'amusement_park'
+            activity: 'amusement_park',
+            shopping: 'shopping_mall',
+            transport: 'transit_station',
+            museum: 'museum',
+            park: 'park',
+            nightlife: 'night_club',
+            medical: 'hospital',
+            grocery: 'supermarket',
+            finance: 'bank'
         };
 
         const type = categoryMap[category] || 'point_of_interest';
@@ -157,9 +169,18 @@ class PlacesAdapter {
     }
 
     _detectCategory(types) {
-        if (types.includes('lodging') || types.includes('hotel')) return 'hotel';
+        if (types.includes('grocery_or_supermarket') || types.includes('supermarket') || types.includes('convenience_store')) return 'grocery';
+        if (types.includes('hospital') || types.includes('pharmacy') || types.includes('doctor')) return 'medical';
+        if (types.includes('bank') || types.includes('atm')) return 'finance';
+        if (types.includes('night_club') || types.includes('casino') || types.includes('bar')) return 'nightlife';
+        if (types.includes('shopping_mall') || types.includes('clothing_store') || types.includes('department_store')) return 'shopping';
+        if (types.includes('transit_station') || types.includes('bus_station') || types.includes('train_station') || types.includes('airport')) return 'transport';
+        if (types.includes('museum') || types.includes('art_gallery')) return 'museum';
+        if (types.includes('park') || types.includes('campground') || types.includes('natural_feature')) return 'park';
+        if (types.includes('lodging') || types.includes('hotel') || types.includes('accommodation')) return 'hotel';
         if (types.includes('restaurant') || types.includes('cafe') || types.includes('food')) return 'restaurant';
-        if (types.includes('tourist_attraction') || types.includes('museum') || types.includes('point_of_interest')) return 'landmark';
+        if (types.includes('tourist_attraction') || types.includes('point_of_interest') || types.includes('landmark')) return 'landmark';
+        if (types.includes('amusement_park') || types.includes('stadium') || types.includes('zoo')) return 'activity';
         return 'other';
     }
 }

@@ -9,6 +9,7 @@ interface MapViewProps {
     lat: string;
     lng: string;
     zoom?: number;
+    mapCenterTick?: number;
     dayStops: any[];
     selectedPOI: POI | null;
     routeData: any;
@@ -19,6 +20,7 @@ export function ExploreMapView({
     lat,
     lng,
     zoom = 13,
+    mapCenterTick = 0,
     dayStops,
     selectedPOI,
     routeData,
@@ -181,7 +183,7 @@ export function ExploreMapView({
     </body>
     </html>
   `;
-    }, [lat, lng, zoom, dayStops, selectedPOI, routeData, viewMode, discoverPOIs]);
+    }, [lat, lng, zoom, mapCenterTick, dayStops, selectedPOI, routeData, viewMode, discoverPOIs]);
 
     const source = useMemo(() => ({ html: mapHtml }), [mapHtml]);
 

@@ -17,23 +17,55 @@ class TravelService {
         this.ors = new ORSAdapter(process.env.ORS_API_KEY);
     }
 
+    _calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Earth's radius in km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+        return R * c;
+    }
+
     /**
      * Search POIs - uses Google Places to fetch photos and ratings, falls back to ORS
      */
     async geocode(query) {
         try {
+            console.log(`[Geocode] Attempting Nominatim for "${query}"...`);
             const response = await axios.get("https://nominatim.openstreetmap.org/search", {
                 params: { q: query, format: "json", limit: 5 },
-                headers: { "User-Agent": "WanderMate/1.0" }
+                headers: { "User-Agent": "WanderMate/1.0" },
+                timeout: 5000 // Short timeout to fail fast
             });
-            return response.data.map(item => ({
-                name: item.display_name,
-                lat: parseFloat(item.lat),
-                lng: parseFloat(item.lon)
-            }));
+            
+            if (response.data && response.data.length > 0) {
+                return response.data.map(item => ({
+                    name: item.display_name,
+                    lat: parseFloat(item.lat),
+                    lng: parseFloat(item.lon)
+                }));
+            }
+            throw new Error("Empty Nominatim result");
         } catch (error) {
-            console.error("Geocoding error:", error);
-            return [];
+            console.warn(`[Geocode] Nominatim failed or empty (${error.message}). Falling back to Google Places...`);
+            try {
+                // Fallback to Google Places Text Search (without location bias)
+                const fallbackResults = await this.places.searchPOI(query, null, null, null);
+                if (fallbackResults && fallbackResults.length > 0) {
+                    return fallbackResults.map(item => ({
+                        name: item.name,
+                        lat: parseFloat(item.lat),
+                        lng: parseFloat(item.lng)
+                    }));
+                }
+                return [];
+            } catch (fallbackError) {
+                console.error("[Geocode] Both geocoders failed:", fallbackError.message);
+                return [];
+            }
         }
     }
 
@@ -62,6 +94,18 @@ class TravelService {
             });
         }
         
+        // Calculate distances and sort
+        if (results && results.length > 0) {
+            results = results.map(r => ({
+                ...r,
+                distance: r.distance !== undefined ? r.distance : this._calculateDistance(lat, lng, r.lat, r.lng)
+            }));
+            results.sort((a, b) => a.distance - b.distance);
+            
+            // Apply threshold to limit results length to ensure relevancy
+            results = results.slice(0, 15);
+        }
+
         console.log(`POI results: Returned ${results.length} items`);
         
         cache.set(cacheKey, results, 1800); // Cache for 30 minutes
@@ -96,10 +140,18 @@ class TravelService {
             });
         }
 
-        console.log(`Category results: Returned ${results.length} items`);
+        // Calculate distance, sort, and threshold
+        if (results && results.length > 0) {
+            results = results.map(r => ({
+                ...r,
+                category, // Enforce the requested category
+                distance: r.distance !== undefined ? r.distance : this._calculateDistance(lat, lng, r.lat, r.lng)
+            }));
+            results.sort((a, b) => a.distance - b.distance);
+            results = results.slice(0, 20); // Top 20 for category
+        }
 
-        // Enforce the requested category so the UI displays the correct icon/color
-        results = results.map(r => ({ ...r, category }));
+        console.log(`Category results: Returned ${results.length} items`);
 
         cache.set(cacheKey, results, 1800);
         return results;

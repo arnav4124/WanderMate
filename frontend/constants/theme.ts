@@ -90,6 +90,13 @@ export const CategoryColors: Record<string, string> = {
   restaurant: '#FF6B6B',
   landmark: '#FFD93D',
   activity: '#4ECDC4',
+  shopping: '#E84393',
+  museum: '#8e44ad',
+  park: '#00b894',
+  nightlife: '#9b59b6',
+  medical: '#e74c3c',
+  grocery: '#f39c12',
+  finance: '#2ecc71',
 };
 
 export const CategoryIcons: Record<string, string> = {
@@ -102,6 +109,13 @@ export const CategoryIcons: Record<string, string> = {
   restaurant: 'food',
   landmark: 'map-marker-star',
   activity: 'run',
+  shopping: 'shopping',
+  museum: 'bank',
+  park: 'tree',
+  nightlife: 'glass-cocktail',
+  medical: 'hospital-box-outline',
+  grocery: 'cart-outline',
+  finance: 'bank-outline',
 };
 
 export const Fonts = Platform.select({

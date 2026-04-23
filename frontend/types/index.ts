@@ -4,7 +4,7 @@ export interface Stop {
     placeId?: string;
     lat: number;
     lng: number;
-    category: 'hotel' | 'restaurant' | 'landmark' | 'activity' | 'transport' | 'other';
+    category: 'hotel' | 'restaurant' | 'landmark' | 'activity' | 'transport' | 'shopping' | 'museum' | 'park' | 'nightlife' | 'medical' | 'grocery' | 'finance' | 'other';
     notes?: string;
     order: number;
     duration?: number;

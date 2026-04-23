@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Searchbar, IconButton, Chip, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CategoryColors, CategoryIcons } from '@/constants/theme';
 
-const CATEGORIES = ['hotel', 'restaurant', 'landmark', 'activity'] as const;
+const CATEGORIES = ['hotel', 'restaurant', 'landmark', 'activity', 'shopping', 'transport', 'museum', 'park', 'nightlife', 'medical', 'grocery', 'finance'] as const;
 
 interface SearchBarSectionProps {
     query: string;
@@ -49,7 +49,7 @@ export function SearchBarSection({
                 </View>
 
                 {mode === 'list' && (
-                    <View style={styles.categoryRow}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
                         {CATEGORIES.map((cat) => (
                             <Chip
                                 key={cat}
@@ -69,7 +69,7 @@ export function SearchBarSection({
                                 {cat}
                             </Chip>
                         ))}
-                    </View>
+                    </ScrollView>
                 )}
             </View>
         </View>

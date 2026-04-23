@@ -59,9 +59,17 @@ class ORSAdapter {
         // https://openrouteservice.org/dev/#/api-docs/pois/category_list
         const categoryMap = {
             hotel: [100], // accommodation
-            restaurant: [560], // sustenance (eat and drink)
+            restaurant: [560], // sustenance (eat and drink) - includes cafe, fast food
             landmark: [130, 220, 330, 620], // arts_and_culture, historic, natural, tourism
             activity: [260], // leisure_and_entertainment
+            shopping: [500], // shopping
+            transport: [600], // transport
+            museum: [130], // arts_and_culture
+            park: [330], // natural
+            nightlife: [260, 560], // leisure(club) or sustenance(bar/pub)
+            medical: [460], // healthcare
+            grocery: [500], // shopping (supermarket inside)
+            finance: [430] // financial
         };
 
         const categoryGroupIds = categoryMap[category] || [620]; // default: tourism
@@ -136,9 +144,13 @@ class ORSAdapter {
 
         const rawCat = categoryIds[catVals[0]]?.category_group || '';
         if (rawCat === 'accomodation' || rawCat === 'accommodation') return 'hotel';
+        if (rawCat === 'healthcare') return 'medical';
+        if (rawCat === 'financial') return 'finance';
         if (rawCat === 'sustenance' || rawCat === 'eat_and_drink') return 'restaurant';
         if (['arts_and_culture', 'historic', 'tourism', 'natural'].includes(rawCat)) return 'landmark';
         if (rawCat === 'leisure_and_entertainment') return 'activity';
+        if (rawCat === 'transport' || rawCat === 'public_transport') return 'transport';
+        if (rawCat === 'shopping' || rawCat === 'money') return 'shopping';
         return 'other';
     }
 

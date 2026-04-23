@@ -30,6 +30,7 @@ export default function ExploreScreenV2() {
     const location = useLocation();
     const [mapLat, setMapLat] = useState(location.lat || '17.3616');
     const [mapLng, setMapLng] = useState(location.lng || '78.4747');
+    const [mapCenterTick, setMapCenterTick] = useState(0); // Force map re-center
     const [viewMode, setViewMode] = useState<'itinerary' | 'discover'>('itinerary');
     const [mapMoved, setMapMoved] = useState(false);
     const searchCenterRef = useRef({ lat: mapLat, lng: mapLng, zoom: 13 });
@@ -73,7 +74,43 @@ export default function ExploreScreenV2() {
         } else {
             navigation.setOptions({ title: 'Explore' });
         }
-    }, [navigation, activeTrip]);
+    }, [navigation, activeTrip?.name]);
+
+    useEffect(() => {
+        if (!activeTrip) return;
+
+        const updateLocation = async () => {
+            let initialLat: string | null = null;
+            let initialLng: string | null = null;
+
+            const allStops = activeTrip.days?.flatMap(d => d.stops) || [];
+            if (allStops.length > 0) {
+                initialLat = allStops[0].lat.toString();
+                initialLng = allStops[0].lng.toString();
+            } else if (activeTrip.destination) {
+                try {
+                    const { data } = await api.get('/poi/geocode', { params: { q: activeTrip.destination } });
+                    if (data && data.length > 0) {
+                        initialLat = data[0].lat.toString();
+                        initialLng = data[0].lng.toString();
+                    }
+                } catch (e) {
+                    console.error('Failed to geocode trip destination');
+                }
+            }
+
+            if (initialLat && initialLng) {
+                setMapLat(initialLat);
+                setMapLng(initialLng);
+                searchCenterRef.current = { lat: initialLat, lng: initialLng, zoom: 13 };
+                setMapMoved(false);
+                setMode('map');
+                setMapCenterTick(prev => prev + 1); // Force map re-render center
+            }
+        };
+
+        updateLocation();
+    }, [activeTrip?._id]); // Only runs when a different trip becomes active
 
     useEffect(() => {
         if (activeTrip?.days?.[activeDayIndex]?.stops?.length && activeTrip.days[activeDayIndex].stops.length >= 2) {
@@ -102,7 +139,7 @@ export default function ExploreScreenV2() {
         }
         const savedTrip = await addStop(activeTrip._id, activeDayIndex, {
             name: poi.name, placeId: poi.placeId, lat: poi.lat, lng: poi.lng,
-            category: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'other'].includes(poi.category) ? poi.category as any : 'other',
+            category: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'shopping', 'museum', 'park', 'nightlife', 'medical', 'grocery', 'finance', 'other'].includes(poi.category) ? poi.category as any : 'other',
             address: poi.address, rating: poi.rating, photo: poi.photo, order: 0,
         });
         if (savedTrip) {
@@ -195,28 +232,13 @@ export default function ExploreScreenV2() {
 
     const handleSearchLocation = async () => {
         if (!query) return;
-        // if user just searches, let's treat it as geocode first
-        try {
-            const { data } = await api.get('/poi/geocode', { params: { q: query } });
-            if (data && data.length > 0) {
-                const newLat = data[0].lat.toString();
-                const newLng = data[0].lng.toString();
-                setMapLat(newLat);
-                setMapLng(newLng);
-                setMode('map');
-                setViewMode('discover');
-                setQuery(''); // clear query after geocoding
-                
-                const cat = selectedCategory || 'landmark';
-                if (!selectedCategory) setSelectedCategory('landmark');
-                await runSearch(newLat, newLng, cat, false, showMessage);
-                return;
-            }
-        } catch (e) {
-            console.error(e);
-        }
-        // fallback POI search
-        runSearch(mapLat, mapLng, undefined, false, showMessage);
+        
+        // Disable implicit geocode hijack here to allow native POI list results sorted by distance.
+        // Google will contextualize the query against mapLat / mapLng locally.
+        setViewMode('discover');
+        setSelectedCategory(null);
+        
+        await runSearch(mapLat, mapLng, null, false, showMessage);
     };
 
     const handleMapMessage = (event: any) => {
@@ -290,6 +312,7 @@ export default function ExploreScreenV2() {
                             lat={searchCenterRef.current ? searchCenterRef.current.lat : mapLat} 
                             lng={searchCenterRef.current ? searchCenterRef.current.lng : mapLng}
                             zoom={searchCenterRef.current ? searchCenterRef.current.zoom : 13}
+                            mapCenterTick={mapCenterTick}
                             viewMode={viewMode}
                             discoverPOIs={results}
                             dayStops={activeTrip?.days?.[activeDayIndex]?.stops || []}

@@ -5,7 +5,7 @@ const stopSchema = new mongoose.Schema({
     placeId: String,
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
-    category: { type: String, enum: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'other'], default: 'other' },
+    category: { type: String, enum: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'shopping', 'museum', 'park', 'nightlife', 'medical', 'grocery', 'finance', 'other'], default: 'other' },
     notes: String,
     order: { type: Number, required: true },
     arrivalTime: String,
