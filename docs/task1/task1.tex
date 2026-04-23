@@ -192,7 +192,7 @@ Users shall be able to perform undo and redo on itinerary editing actions (add s
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The dual-API design uses Google Places as the primary POI provider (for search, category browsing, ratings, photos, and opening hours) with the OpenRouteService (ORS) POI endpoint as a fallback when Google Places returns no results. An Overpass API adapter was initially developed but is currently disabled; the Facade pattern allows it to be re-enabled without changes to calling code. A server-side \texttt{node-cache} caching layer controls free-tier quota consumption.
+  \textbf{Architectural significance.} The dual-API design uses Google Places as the primary POI provider (for search, category browsing, ratings, photos, and opening hours) with the OpenRouteService (ORS) POI endpoint as a fallback when Google Places returns no results. An Overpass API adapter was initially developed but is currently disabled; the Facade pattern allows it to be re-enabled without changes to calling code. A server-side \texttt{node-cache} caching layer controls free-tier quota consumption. Nominatim (OpenStreetMap) is used as the geocoding provider for destination resolution, with a strict 5\,000\,ms timeout and Google Places Text Search as a fallback.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -206,7 +206,7 @@ Users shall be able to perform undo and redo on itinerary editing actions (add s
 \endfoot
 
 \reqid{FR-05} & POI Discovery &
-Users shall be able to search for hotels, restaurants, landmarks, and activities by keyword and category. The primary search is served by the Google Places Text Search and Nearby Search APIs; when Google Places returns zero results, the system falls back to the ORS POI endpoint. &
+Users shall be able to search for POIs by keyword and category across 13 supported categories: hotel, restaurant, landmark, activity, transport, museum, park, shopping, nightlife, medical, grocery, finance, and other. The primary search is served by the Google Places Text Search and Nearby Search APIs; when Google Places returns zero results, the system falls back to the ORS POI endpoint. Results are sorted by Haversine distance from the map centre and capped at 15 (text search) or 20 (category browsing) for relevancy. &
 \high \\
 
 \rowcolor{tablealtbg}
@@ -662,9 +662,9 @@ Itinerary Engine, Budget Engine, Social Feed Service, Mobile Client \\
 
 \subsubsection{Mobile Client (React Native / Expo)}
 
-The mobile client is the sole user-facing component of WanderMate. It is built with React Native using the Expo managed workflow (SDK 54), targeting Android and web. Navigation is provided by Expo Router with a bottom tab bar containing five primary screens: \textbf{My Trips} (trips list with create/set-active actions), \textbf{Explore} (POI search + integrated map + itinerary panel via \texttt{@gorhom/bottom-sheet}), \textbf{Feed} (social feed with discover/following toggle), \textbf{Budget} (expense tracking with category breakdowns), and \textbf{Profile} (user stats, offline sync trigger, sign-out).
+The mobile client is the sole user-facing component of WanderMate. It is built with React Native using the Expo managed workflow (SDK 54), targeting Android and web. Navigation is provided by Expo Router with a bottom tab bar containing five primary screens: \textbf{My Trips} (trips list with create/set-active actions), \textbf{Explore} (context-aware POI search + integrated map with auto-centering + itinerary panel via \texttt{@gorhom/bottom-sheet}; implemented in \texttt{explore2.tsx}), \textbf{Feed} (social feed with discover/following toggle), \textbf{Budget} (expense tracking with category breakdowns), and \textbf{Profile} (user stats, offline sync trigger, sign-out).
 
-The interactive map is rendered by embedding Leaflet 1.9.4 inside a \texttt{WebView} component. The map uses OpenStreetMap tiles and displays numbered markers with category-coloured borders. A bidirectional JavaScript bridge passes itinerary data into the WebView and receives user interactions (pin clicks, stop selection) out via \texttt{postMessage}/\texttt{onMessage}. Route polylines from ORS are rendered as GeoJSON overlays; when ORS route data is unavailable, a dashed straight-line fallback is drawn.
+The interactive map is rendered by embedding Leaflet 1.9.4 inside a \texttt{WebView} component. The map uses OpenStreetMap tiles and displays numbered markers with category-coloured borders across 13 supported POI categories, each with dedicated icons and colour coding. A bidirectional JavaScript bridge passes itinerary data into the WebView and receives user interactions (pin clicks, stop selection) out via \texttt{postMessage}/\texttt{onMessage}. The map intelligently auto-recenters (via \texttt{mapCenterTick}) whenever the active trip changes: if the trip has existing stops, the viewport snaps to the first itinerary stop; otherwise, the trip's destination name is geocoded via the backend's \texttt{/api/poi/geocode} endpoint. Route polylines from ORS are rendered as GeoJSON overlays; when ORS route data is unavailable, a dashed straight-line fallback is drawn.
 
 State management uses \textbf{Zustand} with five dedicated stores: \texttt{authStore} (Firebase auth state, profile), \texttt{tripStore} (trip CRUD, stop management, undo/redo stacks, Firebase subscription), \texttt{budgetStore} (expense CRUD, summary, Firebase subscription), \texttt{feedStore} (feed pagination, like/clone/publish), and \texttt{activeTripStore} (tracks which trip is ``active'' for the Explore screen).
 
@@ -686,7 +686,7 @@ In addition to secret management, the gateway performs: Firebase JWT verificatio
   \item \texttt{/api/budget} --- expense CRUD, budget summaries with split calculation
   \item \texttt{/api/feed} --- feed pagination, publish, like/unlike, clone
   \item \texttt{/api/users} --- profile CRUD, follow/unfollow, user search
-  \item \texttt{/api/poi} --- POI search and category browsing (proxied via TravelService)
+  \item \texttt{/api/poi} --- POI search, category browsing, and geocoding (proxied via TravelService)
   \item \texttt{/api/routes} --- route calculation and optimisation (proxied via TravelService)
 \end{itemize}
 
@@ -699,13 +699,17 @@ A global error handler ensures structured JSON error responses for all failure s
 
 \subsubsection{POI \& Routing Service (TravelService Facade)}
 
-This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes five methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, \texttt{getRoute(coordinates, profile)}, and \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver). Internally, two active adapters implement provider-specific API logic:
+This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes six methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, \texttt{getRoute(coordinates, profile)}, \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver), and \texttt{geocode(query)} (Nominatim with Google Places fallback). Internally, two active adapters implement provider-specific API logic:
 
 \begin{itemize}
-  \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Quota-sensitive: 5\,000 req/month on free tier.
-  \item \textbf{ORSAdapter} --- dual-purpose adapter serving both as a POI fallback (via the ORS \texttt{/pois} endpoint, limited to 2\,000m radius) and as the routing engine (via \texttt{/v2/directions} for route calculation and \texttt{/optimization} for multi-stop visit-order optimisation using the VROOM solver).
+  \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Supports 13 category types mapped to Google Places types (e.g., \texttt{shopping\_mall}, \texttt{night\_club}, \texttt{hospital}, \texttt{supermarket}, \texttt{bank}). Quota-sensitive: 5\,000 req/month on free tier.
+  \item \textbf{ORSAdapter} --- dual-purpose adapter serving both as a POI fallback (via the ORS \texttt{/pois} endpoint, limited to 2\,000m radius) and as the routing engine (via \texttt{/v2/directions} for route calculation and \texttt{/optimization} for multi-stop visit-order optimisation using the VROOM solver). Category mappings use ORS category IDs (e.g., shopping: 500, nightlife: 260/560, medical: 460, finance: 430).
   \item \textbf{OverpassAdapter} --- an OpenStreetMap data provider querying the Overpass API. The adapter is \emph{implemented but currently disabled} (entire file commented out). It can be re-enabled by uncommenting and importing it in \texttt{TravelService}, satisfying NFR-15.
 \end{itemize}
+
+\textbf{Proximity sorting and result capping:} All POI search methods compute the Haversine great-circle distance between the map centre and each result using a dedicated \texttt{\_calculateDistance()} method, sort results by ascending distance, and cap the output (15 results for text search, 20 for category search) to ensure relevancy and prevent UI clutter.
+
+\textbf{Geocoding:} The \texttt{geocode()} method resolves destination names to coordinates using Nominatim (OpenStreetMap) as the primary geocoder with a strict 5\,000\,ms timeout and \texttt{User-Agent: WanderMate/1.0} header. On failure or empty results, it falls back to Google Places Text Search. The route is exposed at \texttt{GET /api/poi/geocode?q=query}.
 
 A shared \texttt{node-cache} instance sits in front of all adapter methods. Cache TTLs are: 30 minutes for search results, 24 hours for place details, and 1 hour for route calculations. If Google Places is unavailable at runtime, \texttt{TravelService} falls back to returning ORS POI results, satisfying NFR-08 without any change to the calling code.
 
