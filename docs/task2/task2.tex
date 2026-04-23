@@ -148,7 +148,7 @@
 \section{Introduction}
 % ============================================================
 
-WanderMate is a collaborative mobile travel planner built as a React~Native (Expo) frontend communicating with a Node.js/Express backend, backed by MongoDB for persistent storage and Firebase Realtime Database for real-time event propagation. The system integrates multiple external APIs --- Google Places, OpenRouteService (ORS), and a disabled Overpass adapter --- all proxied through a backend API Gateway that acts as a secret vault and central policy enforcement point.
+WanderMate is a collaborative mobile travel planner built as a React~Native (Expo) frontend communicating with a Node.js/Express backend, backed by MongoDB for persistent storage and Firebase Realtime Database for real-time event propagation. The system integrates multiple external APIs --- Google Places, OpenRouteService (ORS), the Nominatim geocoding API, and a disabled Overpass adapter --- all proxied through a backend API Gateway that acts as a secret vault and central policy enforcement point.
 
 This document presents the \textbf{Architecture Framework} for WanderMate, structured in two parts:
 
@@ -164,7 +164,7 @@ This document presents the \textbf{Architecture Framework} for WanderMate, struc
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{c4_context.pdf}
-\caption{C4 Context Diagram: WanderMate system boundary showing the two internal components (Mobile App, API Gateway), five external systems (Google Places, ORS, Firebase Auth, Firebase RTDB, MongoDB Atlas), and two actor types (Traveller, Collaborator). All external API credentials reside exclusively on the backend.}
+\caption{C4 Context Diagram: WanderMate system boundary showing the two internal components (Mobile App, API Gateway), six external systems (Google Places, ORS, Nominatim, Firebase Auth, Firebase RTDB, MongoDB Atlas), and two actor types (Traveller, Collaborator). All external API credentials reside exclusively on the backend.}
 \label{fig:c4-context}
 \end{figure}
 
@@ -199,7 +199,7 @@ The following stakeholders have been identified for the WanderMate system. Each 
 \rowcolor{tablealtbg}
 4 & \textbf{System Administrator / DevOps} & Individuals responsible for deploying, configuring, monitoring, and maintaining the backend infrastructure and database services. & Backend deployer, MongoDB Atlas administrator, Firebase console operator, environment configuration manager. \\
 
-5 & \textbf{External API Providers} & Third-party services whose APIs WanderMate consumes, each with usage quotas, SLAs, and terms of service that constrain the system's architecture. & Google Cloud (Places API), OpenRouteService, Firebase / Google Cloud Platform. \\
+5 & \textbf{External API Providers} & Third-party services whose APIs WanderMate consumes, each with usage quotas, SLAs, and terms of service that constrain the system's architecture. & Google Cloud (Places API), OpenRouteService, Nominatim (OpenStreetMap), Firebase / Google Cloud Platform. \\
 
 \end{longtable}
 
@@ -231,7 +231,7 @@ C4 & \textbf{Modifiability \& Testability} & The codebase must be modular enough
 C5 & \textbf{Deployment \& Operations} & The system must be deployable with minimal configuration (environment variables in \code{.env}). Database connections, Firebase credentials, and API keys must be parameterised. The server must gracefully handle startup failures with clear error messages. & Sys.~Admin $\cdot$ \reqid{NFR-09} \\
 
 \rowcolor{tablealtbg}
-C6 & \textbf{API Quota Compliance} & The system must operate within the free-tier quotas of all external APIs at launch: Google Places ($\leq$ 5,000 req/month), ORS ($\leq$ 2,000 req/day). Quota violations would incur financial cost and potentially break the service. & Supervisor, API Providers $\cdot$ \reqid{NFR-06} \\
+C6 & \textbf{API Quota Compliance} & The system must operate within the free-tier quotas of all external APIs at launch: Google Places ($\leq$ 5,000 req/month), ORS ($\leq$ 2,000 req/day), and Nominatim ($\leq$ 1 req/sec). Quota violations would incur financial cost and potentially break the service. & Supervisor, API Providers $\cdot$ \reqid{NFR-06} \\
 
 C7 & \textbf{Real-time Collaboration} & Multiple users editing the same trip must see each other's changes propagated within 500\,ms. Conflict resolution must be deterministic and not require user intervention. & End Users $\cdot$ \reqid{FR-20}, \reqid{FR-21}, \reqid{NFR-03} \\
 
@@ -505,10 +505,12 @@ Concretely:
 \vspace{0.6em}
 \textbf{Context}
 
-WanderMate consumes three external APIs with sensitive credentials:
+WanderMate consumes multiple external APIs, including those with sensitive credentials or strict SLAs:
 \begin{itemize}
   \item \textbf{Google Places API} --- requires a \code{GOOGLE\_PLACES\_API\_KEY} with billing enabled. If extracted from a mobile bundle, it could be used by attackers to make arbitrary calls, incurring cost.
   \item \textbf{OpenRouteService API} --- requires an \code{ORS\_API\_KEY} with a daily quota of 2,000 requests.
+  \item \textbf{Nominatim Geocoding API} --- strictly limits requests to 1 per second and requires a valid User-Agent, risking permanent IP bans if called freely from clients.
+  \item \textbf{Nominatim Geocoding API} --- strictly limits requests to 1 per second and requires a valid User-Agent, risking permanent IP bans if called freely from clients.
   \item \textbf{Firebase Admin SDK} --- requires a private key (\code{FIREBASE\_PRIVATE\_KEY}) that grants unrestricted access to the Firebase project (database administration, user management, custom token generation).
 \end{itemize}
 

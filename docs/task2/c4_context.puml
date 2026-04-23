@@ -35,6 +35,7 @@ database "MongoDB\nAtlas" as mongo #FEF3C7
 
 cloud "OpenStreetMap" as osm #EDE9FE {
   component "Tile Server\n(Leaflet maps)" as tiles #C4B5FD
+  component "Nominatim\nGeocoding API" as nominatim #C4B5FD
 }
 
 ' Relationships
@@ -48,6 +49,7 @@ mobile -right-> tiles : Map tile\nrequests
 
 backend -down-> mongo : CRUD operations\n(Mongoose ODM)
 backend -right-> gplaces : POI search\n(proxied, + API key)
+backend -right-> nominatim : Geocoding\n(proxied lookup)
 backend -right-> ors : Routing &\nPOI fallback\n(proxied, + API key)
 backend -right-> frtdb : Event writes\n(Admin SDK)
 

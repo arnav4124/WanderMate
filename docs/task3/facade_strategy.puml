@@ -16,6 +16,7 @@ package "API Layer (Clients)" #DBEAFE {
     GET /api/poi/search
     GET /api/poi/category/:cat
     GET /api/poi/details/:id
+    GET /api/poi/geocode
     GET /api/routes/calculate
     GET /api/routes/optimize
   }
@@ -30,6 +31,7 @@ package "TravelService Facade" #D1FAE5 {
     + searchPOI(query, lat, lng, radius) : POI[]
     + searchByCategory(category, lat, lng, radius) : POI[]
     + getPlaceDetails(placeId, name, lat, lng) : PlaceDetail
+    + geocode(query) : Coordinates
     + getRoute(coordinates, profile) : Route
     + optimizeRoute(coordinates, profile) : Route
     ==
