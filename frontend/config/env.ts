@@ -12,7 +12,7 @@ export const FIREBASE_CONFIG = {
   measurementId: "G-FDFZ1ENBB7"
 };
 
-const API_PORT = '5001';
+const API_PORT = '5000';
 
 const getHostFromValue = (value?: string | null) => {
   if (!value) return null;
@@ -58,6 +58,12 @@ const AUTO_DETECTED_DEVICE_API_BASE_URL = (() => {
   return host ? `http://${host}:${API_PORT}/api` : null;
 })();
 
-export const API_BASE_URL = AUTO_DETECTED_DEVICE_API_BASE_URL || DEFAULT_API_BASE_URL;
+export const API_BASE_URL = 'http://192.168.137.1:5000/api';
 
 export const GOOGLE_WEB_CLIENT_ID = '483835352991-ivhlte3v6mj8d8nkkkof1gfouncveu3b.apps.googleusercontent.com';
+
+export const API_NINJAS_KEY = 'hlBPN8pPi7RyPjxysh0kcjXa57cjwkzN1RWugwTK';
+
+
+
+

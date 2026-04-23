@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
 import { Text, Card, FAB, useTheme, Chip } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -7,12 +7,14 @@ import { format } from 'date-fns';
 import { useTripStore } from '@/stores/tripStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useActiveTripStore } from '@/stores/activeTripStore';
+import { useTripImage } from '@/hooks/use-trip-image';
 import { Trip } from '@/types';
 
 function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
   const theme = useTheme();
-  const { activeTripId, setActiveTrip } = useActiveTripStore();
+  const { activeTripId, setActiveTrip, clearActiveTrip } = useActiveTripStore();
   const isActive = activeTripId === trip._id;
+  const imageUri = useTripImage(trip._id, trip.coverImage);
 
   const dayCount = trip.startDate && trip.endDate ? Math.ceil(
     (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)
@@ -27,11 +29,12 @@ function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
 
   return (
     <Card style={[styles.tripCard, { backgroundColor: theme.colors.surface }]} onPress={onPress} mode="elevated">
-      {trip.coverImage ? (
-        <Card.Cover source={{ uri: trip.coverImage }} style={styles.cardCover} />
+      {imageUri ? (
+        <Card.Cover source={{ uri: imageUri }} style={styles.cardCover} />
       ) : (
         <View style={[styles.cardCoverPlaceholder, { backgroundColor: theme.colors.primaryContainer }]}>
-          <MaterialCommunityIcons name="earth" size={56} color={theme.colors.primary} />
+          {/* Show spinner while image is loading from API Ninjas */}
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       )}
       <Card.Content style={styles.cardContent}>
@@ -85,18 +88,18 @@ function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
             </Text>
           </View>
         )}
-        
+
         <View style={styles.cardActions}>
-            <Chip 
-                mode={isActive ? "flat" : "outlined"} 
-                selected={isActive} 
-                onPress={() => setActiveTrip(trip._id)}
-                icon={isActive ? "check-circle" : "star-outline"}
-                style={[styles.actionChip, isActive && { backgroundColor: theme.colors.primaryContainer }]}
-                textStyle={{ fontSize: 12 }}
-            >
-                {isActive ? 'Active Trip' : 'Set Active'}
-            </Chip>
+          <Chip
+            mode={isActive ? "flat" : "outlined"}
+            selected={isActive}
+            onPress={() => isActive ? clearActiveTrip() : setActiveTrip(trip._id)}
+            icon={isActive ? "check-circle" : "star-outline"}
+            style={[styles.actionChip, isActive && { backgroundColor: theme.colors.primaryContainer }]}
+            textStyle={{ fontSize: 12 }}
+          >
+            {isActive ? 'Active Trip' : 'Set Active'}
+          </Chip>
         </View>
       </Card.Content>
     </Card>

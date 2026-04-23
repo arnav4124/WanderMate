@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../services/api';
 import { Expense, BudgetSummary } from '../types';
+import { localCache, syncQueue } from '../services/syncQueue';
 import { ref, onValue, off } from 'firebase/database';
 import { database } from '../config/firebase';
 
@@ -30,9 +31,15 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
                 summary: response.data.summary,
                 isLoading: false,
             });
+            await localCache.set(`budget_${tripId}`, response.data);
         } catch (error) {
-            console.error('Fetch budget error:', error);
-            set({ isLoading: false });
+            const cached = await localCache.get<{ expenses: Expense[]; summary: any }>(`budget_${tripId}`, Infinity);
+            if (cached) {
+                set({ expenses: cached.expenses, summary: cached.summary, isLoading: false });
+            } else {
+                console.error('Fetch budget error:', error);
+                set({ isLoading: false });
+            }
         }
     },
 
@@ -42,11 +49,11 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
             set((state) => ({
                 expenses: [...state.expenses, response.data],
             }));
-            // Re-fetch to update summary
             get().fetchBudget(tripId);
             return response.data;
         } catch (error) {
-            console.error('Add expense error:', error);
+            await syncQueue.add({ method: 'POST', url: `/budget/${tripId}`, data });
+            console.error('Add expense error (queued offline):', error);
             return undefined;
         }
     },
@@ -60,7 +67,8 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
             get().fetchBudget(tripId);
             return response.data;
         } catch (error) {
-            console.error('Update expense error:', error);
+            await syncQueue.add({ method: 'PUT', url: `/budget/${tripId}/${expenseId}`, data });
+            console.error('Update expense error (queued offline):', error);
             return undefined;
         }
     },
@@ -73,7 +81,8 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
             }));
             get().fetchBudget(tripId);
         } catch (error) {
-            console.error('Delete expense error:', error);
+            await syncQueue.add({ method: 'DELETE', url: `/budget/${tripId}/${expenseId}` });
+            console.error('Delete expense error (queued offline):', error);
         }
     },
 

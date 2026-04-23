@@ -181,6 +181,7 @@ export const useTripStore = create<TripState>((set, get) => ({
             await localCache.set(`trip_${tripId}`, updatedTrip);
             await localCache.set('trips', get().trips);
         } catch (error: any) {
+            await syncQueue.add({ method: 'PUT', url: `/trips/${tripId}/days/${dayIndex}/stops/${stopId}`, data });
             set({ error: error.message });
         }
     },
@@ -233,6 +234,7 @@ export const useTripStore = create<TripState>((set, get) => ({
             await localCache.set(`trip_${tripId}`, updatedTrip);
             await localCache.set('trips', get().trips);
         } catch (error: any) {
+            await syncQueue.add({ method: 'PUT', url: `/trips/${tripId}/days/${dayIndex}/reorder`, data: { stopOrder } });
             set({ error: error.message });
         }
     },
@@ -242,6 +244,7 @@ export const useTripStore = create<TripState>((set, get) => ({
             const response = await api.post(`/trips/${tripId}/collaborators`, { userId });
             set({ currentTrip: response.data });
         } catch (error: any) {
+            await syncQueue.add({ method: 'POST', url: `/trips/${tripId}/collaborators`, data: { userId } });
             set({ error: error.message });
         }
     },

@@ -520,9 +520,9 @@ The following sequence describes how a collaborative trip edit propagates to all
 \begin{enumerate}
   \item \textbf{User A} edits a trip stop via the mobile client. The edit request is sent to the API Gateway.
   \item The \textbf{API Gateway} processes the request: updates the Trip document in MongoDB and emits a \code{TRIP\_UPDATED} event on the \code{TripObserver} EventEmitter.
-  \item The \code{TripObserver} event handler catches the event and writes a \textbf{lightweight notification payload} --- containing only metadata (\code{\{updatedAt, lastEditedBy, name, destination\}}) --- to \code{trips/\{tripId\}} in \textbf{Firebase Realtime Database}. Importantly, the full trip document is \emph{not} written to Firebase.
+  \item The \code{TripObserver} event handler catches the event, re-reads the updated \code{Trip} document from MongoDB, serialises it (\code{JSON.parse(JSON.stringify(trip))}) with \code{lastEditedBy} and \code{updatedAt} appended, and writes the \textbf{full sanitised trip document} to \code{trips/\{tripId\}} in \textbf{Firebase Realtime Database}. This eliminates a separate client re-fetch and delivers the authoritative state in a single push.
   \item Firebase pushes the update to all connected clients that have registered \code{onValue} listeners on that path.
-  \item \textbf{User B's} \code{tripStore.subscribeTripUpdates()} callback fires with the new data. The store compares timestamps (Last-Write-Wins) and updates local state if the remote version is newer.
+  \item \textbf{User B's} \code{tripStore.subscribeTripUpdates()} callback fires with the full trip payload. The store applies the data \textbf{directly to local state} using a last-write-wins (LWW) timestamp comparison (\code{if (remote.updatedAt >= local.updatedAt)}) --- no additional HTTP call to MongoDB is required.
   \item The React Native UI re-renders automatically via Zustand's reactive subscription model.
 \end{enumerate}
 

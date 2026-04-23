@@ -9,7 +9,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { LightTheme, DarkTheme } from '@/constants/theme';
 import { useAuthStore } from '@/stores/authStore';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, AppState } from 'react-native';
+import { syncQueue } from '@/services/syncQueue';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -51,6 +52,26 @@ export default function RootLayout() {
   useEffect(() => {
     const unsubscribe = initialize();
     return unsubscribe;
+  }, []);
+
+  // Flush queued offline actions whenever the app becomes active (i.e. user returns from background)
+  useEffect(() => {
+    // Attempt flush on startup
+    syncQueue.flush().then(({ success, failed }) => {
+      if (success > 0) console.log(`[Sync] Flushed ${success} queued action(s) on startup`);
+      if (failed > 0) console.warn(`[Sync] ${failed} action(s) still pending`);
+    });
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        syncQueue.flush().then(({ success, failed }) => {
+          if (success > 0) console.log(`[Sync] Flushed ${success} queued action(s) on resume`);
+          if (failed > 0) console.warn(`[Sync] ${failed} action(s) still pending`);
+        });
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   return (

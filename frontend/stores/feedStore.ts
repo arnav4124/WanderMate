@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../services/api';
 import { FeedPost } from '../types';
+import { syncQueue } from '../services/syncQueue';
 
 interface FeedState {
     posts: FeedPost[];
@@ -62,7 +63,8 @@ export const useFeedStore = create<FeedState>((set, get) => ({
                 ),
             }));
         } catch (error) {
-            console.error('Like error:', error);
+            await syncQueue.add({ method: 'POST', url: `/feed/${postId}/like` });
+            console.error('Like error (queued offline):', error);
         }
     },
 
@@ -80,7 +82,8 @@ export const useFeedStore = create<FeedState>((set, get) => ({
         try {
             await api.post(`/feed/publish/${tripId}`);
         } catch (error) {
-            console.error('Publish error:', error);
+            await syncQueue.add({ method: 'POST', url: `/feed/publish/${tripId}` });
+            console.error('Publish error (queued offline):', error);
         }
     },
 

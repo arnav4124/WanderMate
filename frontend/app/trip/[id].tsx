@@ -11,6 +11,7 @@ import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-nativ
 import * as Location from 'expo-location';
 import { useTripStore } from '@/stores/tripStore';
 import { useFeedStore } from '@/stores/feedStore';
+import { useActiveTripStore } from '@/stores/activeTripStore';
 import { CategoryColors, CategoryIcons } from '@/constants/theme';
 import { Stop } from '@/types';
 
@@ -24,6 +25,8 @@ export default function TripDetailScreen() {
         undo, redo, undoStack, redoStack, subscribeTripUpdates,
     } = useTripStore();
     const { publishTrip } = useFeedStore();
+    const { activeTripId, setActiveDay, setActiveTrip } = useActiveTripStore();
+    const isActiveTrip = activeTripId === id;
 
     const [selectedDay, setSelectedDay] = useState(0);
     const [showAddStop, setShowAddStop] = useState(false);
@@ -360,12 +363,18 @@ export default function TripDetailScreen() {
                 )}
             </View>
 
-            <FAB
-                icon="plus"
-                style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-                color={theme.colors.onPrimary}
-                onPress={() => setShowAddStop(true)}
-            />
+            {isActiveTrip && (
+                <FAB
+                    icon="plus"
+                    style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+                    color={theme.colors.onPrimary}
+                    onPress={() => {
+                        setActiveTrip(id!);
+                        setActiveDay(selectedDay);
+                        router.navigate('/(tabs)/explore2');
+                    }}
+                />
+            )}
 
             {/* Add Stop Modal */}
             <Portal>

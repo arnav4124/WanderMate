@@ -77,7 +77,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 profile: state.profile ? { ...state.profile, following: response.data.following, pendingFollowing: response.data.pendingFollowing } : null
             }));
         } catch (error) {
-            console.error('Follow error:', error);
+            await syncQueue.add({ method: 'POST', url: `/users/${uid}/follow` });
+            console.error('Follow error (queued offline):', error);
         }
     },
 
@@ -88,7 +89,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 profile: state.profile ? { ...state.profile, following: response.data.following, pendingFollowing: response.data.pendingFollowing } : null
             }));
         } catch (error) {
-            console.error('Unfollow error:', error);
+            await syncQueue.add({ method: 'POST', url: `/users/${uid}/unfollow` });
+            console.error('Unfollow error (queued offline):', error);
         }
     },
 
@@ -99,7 +101,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 profile: state.profile ? { ...state.profile, followRequests: response.data.followRequests, followers: response.data.followers } : null
             }));
         } catch (error) {
-            console.error('Accept follow error:', error);
+            await syncQueue.add({ method: 'POST', url: `/users/${uid}/accept-follow` });
+            console.error('Accept follow error (queued offline):', error);
         }
     },
 
@@ -110,7 +113,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 profile: state.profile ? { ...state.profile, followRequests: response.data.followRequests } : null
             }));
         } catch (error) {
-            console.error('Deny follow error:', error);
+            await syncQueue.add({ method: 'POST', url: `/users/${uid}/deny-follow` });
+            console.error('Deny follow error (queued offline):', error);
         }
     }
 }));

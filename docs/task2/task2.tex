@@ -287,7 +287,7 @@ The runtime interactions follow five primary data flows: POI \& Route Query, Col
 
 \textbf{Firebase RTDB paths} (thin event layer):
 \begin{itemize}
-  \item \code{trips/\{tripId\}} --- carries \code{\{updatedAt, lastEditedBy\}} on every mutation. Written by \code{TripObserver} event handler (\code{services/tripObserver.js}).
+  \item \code{trips/\{tripId\}} --- on \code{TRIP\_CREATED}: carries \code{\{name, destination, owner, updatedAt\}} (metadata only); on \code{TRIP\_UPDATED}: carries the full sanitised trip document with \code{lastEditedBy} appended, enabling direct client-side application without a MongoDB re-fetch. Written by \code{TripObserver} event handler (\code{services/tripObserver.js}).
   \item \code{budgets/\{tripId\}/lastUpdate} --- timestamp written on expense mutations.
   \item \code{feed/\{postId\}} --- carries \code{\{author, tripName, createdAt\}} on publish.
 \end{itemize}
@@ -455,13 +455,13 @@ We will use \textbf{MongoDB as the single source of truth} for all domain data a
 Concretely:
 \begin{itemize}
   \item Backend route handlers persist all mutations to MongoDB via Mongoose models, then emit events on the \code{TripObserver} EventEmitter (\code{services/tripObserver.js}).
-  \item The \code{TripObserver} writes lightweight payloads to Firebase paths:
+  \item The \code{TripObserver} writes payloads to Firebase paths:
     \begin{itemize}
-      \item \code{trips/\{tripId\}} $\gets$ \code{\{name, destination, owner, updatedAt: Date.now()\}}
+      \item \code{trips/\{tripId\}} $\gets$ on \code{TRIP\_CREATED}: \code{\{name, destination, owner, updatedAt\}}; on \code{TRIP\_UPDATED}: the full sanitised trip document (\code{JSON.parse(JSON.stringify(trip))}) with \code{lastEditedBy} and \code{updatedAt} appended.
       \item \code{budgets/\{tripId\}/lastUpdate} $\gets$ timestamp
       \item \code{feed/\{postId\}} $\gets$ \code{\{author, tripName, createdAt: Date.now()\}}
     \end{itemize}
-  \item Frontend stores subscribe via \code{onValue} listeners (\code{tripStore.subscribeTripUpdates()}, \code{budgetStore.subscribeBudgetUpdates()}) and, upon receiving a notification, re-fetch the full authoritative data from MongoDB via the API.
+  \item Frontend stores subscribe via \code{onValue} listeners (\code{tripStore.subscribeTripUpdates()}, \code{budgetStore.subscribeBudgetUpdates()}). For trip updates the \code{tripStore} listener applies the received Firebase document directly to local state using a last-write-wins (LWW) timestamp comparison (\code{if (remote.updatedAt >= local.updatedAt)}) --- no additional HTTP call to MongoDB is made.
 \end{itemize}
 
 \vspace{0.6em}
@@ -477,7 +477,7 @@ Concretely:
 
 \textbf{Negative:}
 \begin{itemize}
-  \item The re-fetch pattern (notification $\to$ API call $\to$ MongoDB read) adds one HTTP round-trip compared to a Firebase-primary approach where data would be pushed directly.
+  \item For \code{TRIP\_UPDATED} events the full trip document is written to Firebase and applied directly on the client --- eliminating any extra HTTP round-trip. However, this makes Firebase carry heavier write payloads than a pure thin-event design, and means trip data in Firebase may temporarily diverge from MongoDB if the sanitisation step produces a stale read.
   \item Two infrastructure dependencies (MongoDB + Firebase) instead of one; both must be operational for full functionality.
   \item Conflict resolution relies on last-write-wins timestamps (\code{updatedAt}) rather than Firebase's built-in conflict resolution; complex concurrent edits may lose intermediate states.
 \end{itemize}
@@ -487,7 +487,7 @@ Concretely:
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{adr001_event_flow.pdf}
-\caption{ADR-001 Sequence Diagram: collaborative edit flow. User~A mutates a stop via the API Gateway, which persists to MongoDB (source of truth), then emits a \code{TRIP\_UPDATED} event via \code{TripObserver}. The observer writes a lightweight notification to Firebase RTDB. User~B's \code{tripStore} receives the \code{onValue} callback and re-fetches the authoritative trip from MongoDB.}
+\caption{ADR-001 Sequence Diagram: collaborative edit flow. User~A mutates a stop via the API Gateway, which persists to MongoDB (source of truth), then emits a \code{TRIP\_UPDATED} event via \code{TripObserver}. The observer writes the full sanitised trip document to Firebase RTDB. User~B's \code{tripStore} receives the \code{onValue} callback and applies the payload directly to local state via LWW timestamp comparison --- no additional API call is required.}
 \label{fig:adr001-sequence}
 \end{figure}
 
@@ -509,7 +509,6 @@ WanderMate consumes multiple external APIs, including those with sensitive crede
 \begin{itemize}
   \item \textbf{Google Places API} --- requires a \code{GOOGLE\_PLACES\_API\_KEY} with billing enabled. If extracted from a mobile bundle, it could be used by attackers to make arbitrary calls, incurring cost.
   \item \textbf{OpenRouteService API} --- requires an \code{ORS\_API\_KEY} with a daily quota of 2,000 requests.
-  \item \textbf{Nominatim Geocoding API} --- strictly limits requests to 1 per second and requires a valid User-Agent, risking permanent IP bans if called freely from clients.
   \item \textbf{Nominatim Geocoding API} --- strictly limits requests to 1 per second and requires a valid User-Agent, risking permanent IP bans if called freely from clients.
   \item \textbf{Firebase Admin SDK} --- requires a private key (\code{FIREBASE\_PRIVATE\_KEY}) that grants unrestricted access to the Firebase project (database administration, user management, custom token generation).
 \end{itemize}
@@ -760,7 +759,7 @@ We will implement an \textbf{offline-first architecture} using two modules in \c
 \begin{itemize}
   \item \textbf{Stale data risk:} Offline users see the last-cached state, which may diverge significantly from the current server state if collaborators have been making changes.
   \item \textbf{Queue conflicts:} If two offline users make conflicting edits (e.g., both remove the same stop), the second flush will encounter a 404 or produce an inconsistent state. Last-write-wins resolves this but may silently discard one user's changes.
-  \item \textbf{Manual sync trigger:} The queue does not auto-flush on reconnect in the current implementation; users must navigate to the Profile screen and tap ``Sync Offline Changes.'' This is a usability gap acknowledged for future improvement.
+  \item \textbf{Sync trigger --- automatic and manual:} The queue is flushed automatically on every app launch and whenever the app transitions to the \code{active} state (via an \code{AppState} listener wired in \code{app/\_layout.tsx}). A manual ``Sync Offline Changes'' button on the Profile screen provides an additional on-demand trigger. The automatic flush covers the common reconnection scenario; the manual button serves as a fallback for edge cases (e.g., the user stays in-app while connectivity is restored).
   \item \textbf{Queue growth during extended offline periods:} If a user remains offline for an extended period while making many edits, the \code{syncQueue} in AsyncStorage can grow unboundedly. Large queues increase both the flush duration and the probability of conflicts. A future improvement could cap the queue size or batch related mutations (e.g., multiple edits to the same stop) into a single consolidated operation.
   \item \textbf{Deleted resource handling:} If a collaborator deletes a trip or stop while another user is offline, the offline user's queued mutations targeting that resource will receive 404 responses during flush. The current \code{flush()} implementation does not distinguish 404s from transient errors --- it stops replaying on the first failure, leaving remaining operations in the queue. Robust handling would require detecting 404/410 responses and discarding the corresponding stale operations.
   \item \textbf{AsyncStorage performance:} Large trip documents serialised to JSON may incur noticeable read/write latency; AsyncStorage is not designed for high-frequency updates.

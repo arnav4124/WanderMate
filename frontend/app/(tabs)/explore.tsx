@@ -7,6 +7,7 @@ import api from '@/services/api';
 import { POI } from '@/types';
 import { useTripStore } from '@/stores/tripStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useActiveTripStore } from '@/stores/activeTripStore';
 import { CategoryColors, CategoryIcons } from '@/constants/theme';
 
 const CATEGORIES = ['hotel', 'restaurant', 'landmark', 'activity'] as const;
@@ -15,6 +16,8 @@ export default function ExploreScreen() {
     const theme = useTheme();
     const { trips, fetchTrips, addStop } = useTripStore();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+    const { activeTripId, activeDayIndex } = useActiveTripStore();
+    const activeTrip = trips.find(t => t._id === activeTripId) || null;
     const [query, setQuery] = useState('');
     const [lat, setLat] = useState('17.3616'); // Default: Hyderabad
     const [lng, setLng] = useState('78.4747');
@@ -96,31 +99,38 @@ export default function ExploreScreen() {
             return;
         }
 
+        // If active trip is set, add directly without showing the picker
+        if (activeTripId && activeTrip) {
+            handleConfirmAddToTrip(activeTripId, activeTrip.name, activeDayIndex, poi);
+            return;
+        }
+
         setSelectedPOI(poi);
         setTripPickerVisible(true);
     };
 
-    const handleConfirmAddToTrip = async (tripId: string, tripName: string) => {
-        if (!selectedPOI) return;
+    const handleConfirmAddToTrip = async (tripId: string, tripName: string, dayIndex: number = 0, poiOverride?: POI) => {
+        const poi = poiOverride || selectedPOI;
+        if (!poi) return;
 
-        const savedTrip = await addStop(tripId, 0, {
-            name: selectedPOI.name,
-            placeId: selectedPOI.placeId,
-            lat: selectedPOI.lat,
-            lng: selectedPOI.lng,
-            category: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'other'].includes(selectedPOI.category)
-                ? selectedPOI.category as any
+        const savedTrip = await addStop(tripId, dayIndex, {
+            name: poi.name,
+            placeId: poi.placeId,
+            lat: poi.lat,
+            lng: poi.lng,
+            category: ['hotel', 'restaurant', 'landmark', 'activity', 'transport', 'other'].includes(poi.category)
+                ? poi.category as any
                 : 'other',
-            address: selectedPOI.address || undefined,
-            rating: selectedPOI.rating || undefined,
-            photo: selectedPOI.photo || undefined,
+            address: poi.address || undefined,
+            rating: poi.rating || undefined,
+            photo: poi.photo || undefined,
             order: 0,
         });
 
         if (savedTrip) {
             setTripPickerVisible(false);
             setSelectedPOI(null);
-            showMessage(`${selectedPOI.name} added to ${tripName}`);
+            showMessage(`${poi.name} added to ${tripName}${dayIndex > 0 ? ` · Day ${dayIndex + 1}` : ''}`);
             return;
         }
 
@@ -217,6 +227,15 @@ export default function ExploreScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            {/* Active trip banner */}
+            {activeTrip && (
+                <Surface style={[styles.activeBanner, { backgroundColor: theme.colors.primaryContainer }]} elevation={0}>
+                    <MaterialCommunityIcons name="map-marker-check" size={16} color={theme.colors.primary} />
+                    <Text variant="bodySmall" style={{ color: theme.colors.onPrimaryContainer, marginLeft: 6, flex: 1 }}>
+                        Adding to <Text style={{ fontWeight: '700' }}>{activeTrip.name}</Text> · Day {activeDayIndex + 1}
+                    </Text>
+                </Surface>
+            )}
             {/* Search Bar */}
             <View style={styles.searchSection}>
                 <Searchbar
@@ -324,7 +343,7 @@ export default function ExploreScreen() {
                             mode="outlined"
                             style={styles.tripChoiceButton}
                             contentStyle={{ justifyContent: 'flex-start' }}
-                            onPress={() => handleConfirmAddToTrip(trip._id, trip.name)}
+                            onPress={() => handleConfirmAddToTrip(trip._id, trip.name, 0)}
                         >
                             {trip.name}
                         </Button>
@@ -356,6 +375,7 @@ export default function ExploreScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
+    activeBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
     searchSection: { padding: 16, gap: 12 },
     searchbar: { borderRadius: 12, elevation: 0 },
     locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
