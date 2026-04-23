@@ -435,11 +435,11 @@ The Node.js + Express API Gateway shall support at least 200 concurrent users wi
 
 \rowcolor{tablealtbg}
 \reqid{NFR-05} & Scalability &
-The MongoDB data schema shall support horizontal sharding by user ID to accommodate growth beyond 10\,000 registered users without schema migration. Indexes on \texttt{owner}, \texttt{collaborators}, \texttt{firebaseUid}, and \texttt{createdAt} are defined to support this. &
-10\,000$+$ users \\
+The MongoDB data schema shall be designed to support horizontal sharding by user ID as a \emph{future scalability path} to accommodate growth beyond 10\,000 registered users without schema migration. Indexes on \texttt{owner}, \texttt{collaborators}, \texttt{firebaseUid}, and \texttt{createdAt} are defined to support this. Note: sharding is not available on MongoDB Atlas free/shared tiers and would require migration to a dedicated cluster; at launch the system operates on a single replica set. &
+10\,000$+$ users (future path) \\
 
 \reqid{NFR-06} & Scalability &
-The system shall operate within free-tier API quotas at launch: Google Places ($\leq$ 5\,000 req/month), ORS ($\leq$ 2\,000 req/day), achieved through server-side \texttt{node-cache} caching and per-user \texttt{express-rate-limit} rate limiting (100 general req/15\,min, 50 external API req/hour). &
+The system shall operate within free-tier API quotas at launch: Google Places ($\leq$ 5\,000 req/month), ORS ($\leq$ 2\,000 req/day), achieved through server-side \texttt{node-cache} caching and per-user \texttt{express-rate-limit} rate limiting (100 general req/15\,min, 50 external API req/hour). \emph{Note:} \texttt{express-rate-limit} uses an in-memory store by default; counters reset on process restart and are not shared across instances. This is acceptable for the current single-instance deployment but would require a Redis-backed store before horizontal scaling. &
 Zero overage cost at launch \\
 
 \end{longtable}
@@ -699,7 +699,7 @@ A global error handler ensures structured JSON error responses for all failure s
 
 \subsubsection{POI \& Routing Service (TravelService Facade)}
 
-This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes four methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, and \texttt{getRoute(coordinates, profile)}. Internally, two active adapters implement provider-specific API logic:
+This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes five methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, \texttt{getRoute(coordinates, profile)}, and \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver). Internally, two active adapters implement provider-specific API logic:
 
 \begin{itemize}
   \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Quota-sensitive: 5\,000 req/month on free tier.

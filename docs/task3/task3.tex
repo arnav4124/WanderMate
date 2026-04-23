@@ -168,9 +168,9 @@ Response caching is a \textbf{performance tactic} that reduces latency and resou
 \textbf{L1: Client} & AsyncStorage via \code{localCache} module & Trip data (infinite TTL offline), general cache (1~hour default TTL) & \code{frontend/services/syncQueue.ts} \\
 
 \rowcolor{tablealtbg}
-\textbf{L2: Service} & In-process \code{node-cache} inside TravelService & POI search: 30~min, Place details: 24~hr, Routes: 1~hr & \code{backend/src/services/travelService.js} \\
+\textbf{L2: Middle\-ware} & Express middleware \code{cacheMiddleware} & Per-route response cache with configurable TTL (default 1~hr) & \code{backend/src/middleware/cache.js} \\
 
-\textbf{L3: Middle\-ware} & Express middleware \code{cacheMiddleware} & Per-route response cache with configurable TTL (default 1~hr) & \code{backend/src/middleware/cache.js} \\
+\textbf{L3: Service} & In-process \code{node-cache} inside TravelService & POI search: 30~min, Place details: 24~hr, Routes: 1~hr & \code{backend/src/services/travelService.js} \\
 
 \end{longtable}
 
@@ -179,7 +179,7 @@ Response caching is a \textbf{performance tactic} that reduces latency and resou
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.65\textwidth]{caching_flow.pdf}
-\caption{Multi-layer caching flow: requests traverse L1 (client), L2 (service), and L3 (middleware) caches before reaching external APIs.}
+\caption{Multi-layer caching flow: requests traverse L1 (client-side AsyncStorage), L2 (Express response middleware), and L3 (TravelService \code{node-cache}) before reaching external APIs. The numbering follows the actual request path order.}
 \label{fig:caching-flow}
 \end{figure}
 
@@ -267,6 +267,10 @@ Both limiters use the \code{express-rate-limit} library with \code{standardHeade
   HTTP 429 Too Many Requests
   { "error": "Too many requests, please try again later" }
 \end{verbatim}
+
+\begin{tcolorbox}[notebox]
+  \textbf{Limitation:} \code{express-rate-limit} uses an in-memory store by default. Rate limit counters are reset on process restart and are not shared across multiple Node.js instances. This is acceptable for the current single-instance deployment (see Task~2, VP3), but would require migration to a Redis-backed store (e.g., \code{rate-limit-redis}) before horizontal scaling.
+\end{tcolorbox}
 
 \subsubsection{Reasoning}
 
@@ -444,7 +448,7 @@ Without a unifying layer, each API consumer (Express route handler) would need t
 
 \subsubsection{Solution Applied}
 
-The \code{TravelService} Facade exposes four high-level methods (\code{searchPOI}, \code{searchByCategory}, \code{getPlaceDetails}, \code{getRoute}) that abstract away all provider-specific logic. Internally, it delegates to interchangeable adapter classes (\code{PlacesAdapter}, \code{ORSAdapter}, and the disabled \code{OverpassAdapter}), each of which implements the same normalised interface but targets a different external API. The Facade also encapsulates caching, fallback orchestration, and error handling.
+The \code{TravelService} Facade exposes five high-level methods (\code{searchPOI}, \code{searchByCategory}, \code{getPlaceDetails}, \code{getRoute}, \code{optimizeRoute}) that abstract away all provider-specific logic. Internally, it delegates to interchangeable adapter classes (\code{PlacesAdapter}, \code{ORSAdapter}, and the disabled \code{OverpassAdapter}), each of which implements the same normalised interface but targets a different external API. The Facade also encapsulates caching, fallback orchestration, and error handling.
 
 \subsubsection{UML Class Diagram}
 
@@ -516,7 +520,7 @@ The following sequence describes how a collaborative trip edit propagates to all
 \begin{enumerate}
   \item \textbf{User A} edits a trip stop via the mobile client. The edit request is sent to the API Gateway.
   \item The \textbf{API Gateway} processes the request: updates the Trip document in MongoDB and emits a \code{TRIP\_UPDATED} event on the \code{TripObserver} EventEmitter.
-  \item The \code{TripObserver} event handler catches the event and writes the full updated trip document to \code{trips/\{tripId\}} in \textbf{Firebase Realtime Database}.
+  \item The \code{TripObserver} event handler catches the event and writes a \textbf{lightweight notification payload} --- containing only metadata (\code{\{updatedAt, lastEditedBy, name, destination\}}) --- to \code{trips/\{tripId\}} in \textbf{Firebase Realtime Database}. Importantly, the full trip document is \emph{not} written to Firebase.
   \item Firebase pushes the update to all connected clients that have registered \code{onValue} listeners on that path.
   \item \textbf{User B's} \code{tripStore.subscribeTripUpdates()} callback fires with the new data. The store compares timestamps (Last-Write-Wins) and updates local state if the remote version is newer.
   \item The React Native UI re-renders automatically via Zustand's reactive subscription model.

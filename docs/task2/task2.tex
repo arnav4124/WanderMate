@@ -233,7 +233,7 @@ C5 & \textbf{Deployment \& Operations} & The system must be deployable with mini
 \rowcolor{tablealtbg}
 C6 & \textbf{API Quota Compliance} & The system must operate within the free-tier quotas of all external APIs at launch: Google Places ($\leq$ 5,000 req/month), ORS ($\leq$ 2,000 req/day). Quota violations would incur financial cost and potentially break the service. & Supervisor, API Providers $\cdot$ \reqid{NFR-06} \\
 
-C7 & \textbf{Real-time Collaboration} & Multiple users editing the same trip must see each other's changes propagated within 500\,ms. Conflict resolution must be deterministic and not require user intervention. & End Users $\cdot$ \reqid{FR-20}, \reqid{FR-21}, \reqid{NFR-03} \\
+C7 & \textbf{Real-time Collaboration} & Multiple users editing the same trip must see each other's changes propagated within 500\,ms. Conflict resolution must be automatic (without requiring user intervention), accepting that concurrent edits use a last-write-wins strategy which may silently discard intermediate changes. & End Users $\cdot$ \reqid{FR-20}, \reqid{FR-21}, \reqid{NFR-03} \\
 
 \end{longtable}
 
@@ -759,6 +759,8 @@ We will implement an \textbf{offline-first architecture} using two modules in \c
   \item \textbf{Stale data risk:} Offline users see the last-cached state, which may diverge significantly from the current server state if collaborators have been making changes.
   \item \textbf{Queue conflicts:} If two offline users make conflicting edits (e.g., both remove the same stop), the second flush will encounter a 404 or produce an inconsistent state. Last-write-wins resolves this but may silently discard one user's changes.
   \item \textbf{Manual sync trigger:} The queue does not auto-flush on reconnect in the current implementation; users must navigate to the Profile screen and tap ``Sync Offline Changes.'' This is a usability gap acknowledged for future improvement.
+  \item \textbf{Queue growth during extended offline periods:} If a user remains offline for an extended period while making many edits, the \code{syncQueue} in AsyncStorage can grow unboundedly. Large queues increase both the flush duration and the probability of conflicts. A future improvement could cap the queue size or batch related mutations (e.g., multiple edits to the same stop) into a single consolidated operation.
+  \item \textbf{Deleted resource handling:} If a collaborator deletes a trip or stop while another user is offline, the offline user's queued mutations targeting that resource will receive 404 responses during flush. The current \code{flush()} implementation does not distinguish 404s from transient errors --- it stops replaying on the first failure, leaving remaining operations in the queue. Robust handling would require detecting 404/410 responses and discarding the corresponding stale operations.
   \item \textbf{AsyncStorage performance:} Large trip documents serialised to JSON may incur noticeable read/write latency; AsyncStorage is not designed for high-frequency updates.
 \end{itemize}
 
