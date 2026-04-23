@@ -9,7 +9,7 @@ skinparam sequenceParticipantBackgroundColor #DBEAFE
 skinparam sequenceParticipantBorderColor #3B82F6
 skinparam sequenceDividerBackgroundColor #F3F4F6
 
-title ADR-001 — Collaborative Edit Sequence (MongoDB Primary + Firebase Event Bus)
+title ADR-001 — Collaborative Edit Sequence (MongoDB Primary + Firebase Sync Channel)
 
 participant "User A\n(Mobile Client)" as A #DBEAFE
 participant "API Gateway\n(Express)" as GW #D1FAE5
@@ -48,30 +48,23 @@ deactivate TC
 GW --> A : 200 OK + updated trip JSON
 deactivate GW
 
-OBS -> FB : firebaseDB.ref('trips/' + tripId).set({\n  updatedAt: Date.now(),\n  lastEditedBy: userId\n})
+OBS -> FB : firebaseDB.ref('trips/' + tripId).set(sanitizedTrip)\n// includes updatedAt + lastEditedBy
 deactivate OBS
 
-== Firebase notification propagates ==
+== Firebase trip snapshot propagates ==
 
 FB -> B : onValue callback fires\n(tripStore.subscribeTripUpdates)
 activate B
-B -> GW : GET /api/trips/:id\n(re-fetch authoritative data)
-activate GW
-GW -> DB : Trip.findById(id)
-activate DB
-DB --> GW : latest trip document
-deactivate DB
-GW --> B : 200 OK + trip JSON
-deactivate GW
-B -> B : Compare updatedAt (LWW)\nUpdate local state
+B -> B : Compare updatedAt (LWW)\nApply newer snapshot to local state
 deactivate B
 
 note over FB
-  Firebase carries only
-  {updatedAt, lastEditedBy}
-  — NOT the full document.
   MongoDB remains the
   single source of truth.
+  Firebase is used for
+  real-time propagation
+  of server-produced
+  trip snapshots.
 end note
 
 @enduml

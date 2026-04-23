@@ -192,7 +192,7 @@ Users shall be able to perform undo and redo on itinerary editing actions (add s
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The dual-API design uses Google Places as the primary POI provider (for search, category browsing, ratings, photos, and opening hours) with the OpenRouteService (ORS) POI endpoint as a fallback when Google Places returns no results. An Overpass API adapter was initially developed but is currently disabled; the Facade pattern allows it to be re-enabled without changes to calling code. A server-side \texttt{node-cache} caching layer controls free-tier quota consumption.
+  \textbf{Architectural significance.} The dual-API design uses Google Places as the primary POI provider (for search, category browsing, ratings, photos, and opening hours) with the OpenRouteService (ORS) POI endpoint as a fallback when Google Places returns no results. An Overpass API adapter was initially developed but is currently disabled; the Facade pattern allows it to be re-enabled without changes to calling code. A server-side \texttt{node-cache} caching layer controls free-tier quota consumption. Nominatim (OpenStreetMap) is used as the geocoding provider for destination resolution, with a strict 5\,000\,ms timeout and Google Places Text Search as a fallback.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -301,7 +301,7 @@ Budget data shall synchronise across all collaborators on a shared trip in real 
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The social feed is backed by a dedicated \texttt{FeedPost} MongoDB collection with indexes on \texttt{createdAt} and \texttt{likeCount} for efficient pagination and sorting. Feed posts are denormalised snapshots (trip name, destination, budget summary, stop count) rather than live references, ensuring feed rendering is independent of trip mutations. Cursor-based pagination is implemented via \texttt{skip/limit} queries.
+  \textbf{Architectural significance.} The social feed is backed by a dedicated \texttt{FeedPost} MongoDB collection with indexes on \texttt{createdAt} and \texttt{likeCount} for efficient pagination and sorting. Feed posts are denormalised snapshots (trip name, destination, budget summary, stop count) rather than live references, ensuring feed rendering is independent of trip mutations. Offset-based pagination is implemented via page + \texttt{skip/limit} queries.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -320,7 +320,7 @@ Users shall be able to publish a completed trip to a public social feed. Each fe
 
 \rowcolor{tablealtbg}
 \reqid{FR-17} & Social Feed &
-Users shall be able to follow and unfollow other travellers, and browse a personalised ``Following'' feed filtered to posts by followed users. The feed screen provides a \texttt{SegmentedButtons} toggle between ``Discover'' (all posts) and ``Following'' modes. &
+Users shall be able to send follow requests, accept/deny incoming requests, and remove connections. The ``Following'' feed shall display posts only from users in the authenticated user's \texttt{following[]} list. The feed screen provides a \texttt{SegmentedButtons} toggle between ``Discover'' (all posts) and ``Following'' modes. &
 \high \\
 
 \reqid{FR-18} & Social Feed &
@@ -353,7 +353,7 @@ Users shall be able to clone any public itinerary into their own trip list as an
 \endfoot
 
 \reqid{FR-20} & Collaboration &
-Users shall be able to invite other registered users to co-edit a trip. The \texttt{POST /api/trips/:id/collaborators} endpoint adds a user's Firebase UID to the trip's \texttt{collaborators[]} array and broadcasts the update to Firebase. Changes by any collaborator propagate to all others in real time via Firebase \texttt{onValue} listeners in \texttt{tripStore.subscribeTripUpdates()}. &
+Users shall be able to invite other registered users to co-edit a trip. The \texttt{POST /api/trips/:id/collaborators} endpoint adds a user's Firebase UID to the trip's \texttt{collaborators[]} array only when the user is already connected (follower/following), then broadcasts the update to Firebase. Changes by any collaborator propagate to all others in real time via Firebase \texttt{onValue} listeners in \texttt{tripStore.subscribeTripUpdates()}. &
 \high \\
 
 \rowcolor{tablealtbg}
@@ -496,7 +496,7 @@ The API Gateway shall return a structured error response (HTTP 4xx/5xx with a JS
 \endfoot
 
 \reqid{NFR-10} & Security &
-All API communication between the mobile client and the backend shall use HTTPS; plaintext HTTP connections shall be rejected. &
+In production deployments, all API communication between the mobile client and the backend shall use HTTPS; plaintext HTTP connections shall be rejected. Local development may use HTTP on trusted local networks. &
 TLS 1.2$+$ enforced on all channels \\
 
 \rowcolor{tablealtbg}
@@ -593,7 +593,7 @@ Enforces the Facade + Strategy pattern as a hard maintainability requirement. Th
 \section{Subsystem Overview}
 % ============================================================
 
-WanderMate is decomposed into \textbf{six primary subsystems} and one cross-cutting infrastructure layer. Each subsystem is independently deployable and testable, communicates through well-defined interfaces, and maps directly to one or more functional requirement groups defined in Section~1.
+WanderMate is decomposed into \textbf{six primary logical subsystems} and one cross-cutting infrastructure layer. In the current implementation, these are modular boundaries within a single frontend app and a single backend service (not separately deployed services). They communicate through well-defined interfaces and map directly to one or more functional requirement groups defined in Section~1.
 
 The decomposition follows three guiding principles:
 \begin{itemize}
@@ -625,7 +625,7 @@ API Gateway, Firebase Realtime DB, Firebase Auth \\
 \textbf{API Gateway}\newline(Node.js + Express) &
 Single backend entry point. Proxies and authenticates all third-party API calls, enforces rate limits, applies caching, and serves trip/user/feed/budget data from MongoDB. Keeps all secrets server-side. &
 Express routes (\texttt{trips}, \texttt{users}, \texttt{feed}, \texttt{budget}, \texttt{poi}, \texttt{routes}), Firebase JWT middleware, \texttt{express-rate-limit}, \texttt{node-cache}, Mongoose models, Helmet security headers &
-Mobile Client, MongoDB, Google Places API, ORS \\
+Mobile Client, MongoDB, Firebase Admin SDK, Google Places API, ORS \\
 
 \textbf{POI \& Routing Service}\newline(TravelService Facade) &
 Encapsulates the dual-API POI strategy (Google Places as primary, ORS POI as fallback) and ORS route optimisation behind a single \texttt{TravelService} interface. Implements response caching and provider fallback. An Overpass adapter exists but is currently disabled. &
@@ -662,9 +662,9 @@ Itinerary Engine, Budget Engine, Social Feed Service, Mobile Client \\
 
 \subsubsection{Mobile Client (React Native / Expo)}
 
-The mobile client is the sole user-facing component of WanderMate. It is built with React Native using the Expo managed workflow (SDK 54), targeting Android and web. Navigation is provided by Expo Router with a bottom tab bar containing five primary screens: \textbf{My Trips} (trips list with create/set-active actions), \textbf{Explore} (POI search + integrated map + itinerary panel via \texttt{@gorhom/bottom-sheet}), \textbf{Feed} (social feed with discover/following toggle), \textbf{Budget} (expense tracking with category breakdowns), and \textbf{Profile} (user stats, offline sync trigger, sign-out).
+The mobile client is the sole user-facing component of WanderMate. It is built with React Native using the Expo managed workflow (SDK 54), targeting Android and web. Navigation is provided by Expo Router with a bottom tab bar containing five primary screens: \textbf{My Trips} (trips list with create/set-active actions), \textbf{Explore} (context-aware POI search + integrated map with auto-centering + itinerary panel via \texttt{@gorhom/bottom-sheet}; implemented in \texttt{explore2.tsx}), \textbf{Feed} (social feed with discover/following toggle), \textbf{Budget} (expense tracking with category breakdowns), and \textbf{Profile} (user stats, offline sync trigger, sign-out).
 
-The interactive map is rendered by embedding Leaflet 1.9.4 inside a \texttt{WebView} component. The map uses OpenStreetMap tiles and displays numbered markers with category-coloured borders. A bidirectional JavaScript bridge passes itinerary data into the WebView and receives user interactions (pin clicks, stop selection) out via \texttt{postMessage}/\texttt{onMessage}. Route polylines from ORS are rendered as GeoJSON overlays; when ORS route data is unavailable, a dashed straight-line fallback is drawn.
+The interactive map is rendered by embedding Leaflet 1.9.4 inside a \texttt{WebView} component. The map uses OpenStreetMap tiles and displays numbered markers with category-coloured borders across 13 supported POI categories, each with dedicated icons and colour coding. A bidirectional JavaScript bridge passes itinerary data into the WebView and receives user interactions (pin clicks, stop selection) out via \texttt{postMessage}/\texttt{onMessage}. The map intelligently auto-recenters (via \texttt{mapCenterTick}) whenever the active trip changes: if the trip has existing stops, the viewport snaps to the first itinerary stop; otherwise, the trip's destination name is geocoded via the backend's \texttt{/api/poi/geocode} endpoint. Route polylines from ORS are rendered as GeoJSON overlays; when ORS route data is unavailable, a dashed straight-line fallback is drawn.
 
 State management uses \textbf{Zustand} with five dedicated stores: \texttt{authStore} (Firebase auth state, profile), \texttt{tripStore} (trip CRUD, stop management, undo/redo stacks, Firebase subscription), \texttt{budgetStore} (expense CRUD, summary, Firebase subscription), \texttt{feedStore} (feed pagination, like/clone/publish), and \texttt{activeTripStore} (tracks which trip is ``active'' for the Explore screen).
 
@@ -686,7 +686,7 @@ In addition to secret management, the gateway performs: Firebase JWT verificatio
   \item \texttt{/api/budget} --- expense CRUD, budget summaries with split calculation
   \item \texttt{/api/feed} --- feed pagination, publish, like/unlike, clone
   \item \texttt{/api/users} --- profile CRUD, follow/unfollow, user search
-  \item \texttt{/api/poi} --- POI search and category browsing (proxied via TravelService)
+  \item \texttt{/api/poi} --- POI search, category browsing, and geocoding (proxied via TravelService)
   \item \texttt{/api/routes} --- route calculation and optimisation (proxied via TravelService)
 \end{itemize}
 
@@ -700,12 +700,17 @@ A global error handler ensures structured JSON error responses for all failure s
 \subsubsection{POI \& Routing Service (TravelService Facade)}
 
 This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes five methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)} (both of which now sort outputs by a calculated Haversine proximity distance capped at fixed thresholds), \texttt{geocode(query)} (implementing a strict 5000ms Nominatim timeout before gracefully failing over to Google Places), \texttt{getRoute(coordinates, profile)}, and \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver, now protected by a 35s frontend timeout ceiling). Internally, two active adapters implement provider-specific API logic:
+This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes six methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, \texttt{getRoute(coordinates, profile)}, \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver), and \texttt{geocode(query)} (Nominatim with Google Places fallback). Internally, two active adapters implement provider-specific API logic:
 
 \begin{itemize}
-  \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Quota-sensitive: 5\,000 req/month on free tier.
-  \item \textbf{ORSAdapter} --- dual-purpose adapter serving both as a POI fallback (via the ORS \texttt{/pois} endpoint, limited to 2\,000m radius) and as the routing engine (via \texttt{/v2/directions} for route calculation and \texttt{/optimization} for multi-stop visit-order optimisation using the VROOM solver).
+  \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Supports 13 category types mapped to Google Places types (e.g., \texttt{shopping\_mall}, \texttt{night\_club}, \texttt{hospital}, \texttt{supermarket}, \texttt{bank}). Quota-sensitive: 5\,000 req/month on free tier.
+  \item \textbf{ORSAdapter} --- dual-purpose adapter serving both as a POI fallback (via the ORS \texttt{/pois} endpoint, limited to 2\,000m radius) and as the routing engine (via \texttt{/v2/directions} for route calculation and \texttt{/optimization} for multi-stop visit-order optimisation using the VROOM solver). Category mappings use ORS category IDs (e.g., shopping: 500, nightlife: 260/560, medical: 460, finance: 430).
   \item \textbf{OverpassAdapter} --- an OpenStreetMap data provider querying the Overpass API. The adapter is \emph{implemented but currently disabled} (entire file commented out). It can be re-enabled by uncommenting and importing it in \texttt{TravelService}, satisfying NFR-15.
 \end{itemize}
+
+\textbf{Proximity sorting and result capping:} All POI search methods compute the Haversine great-circle distance between the map centre and each result using a dedicated \texttt{\_calculateDistance()} method, sort results by ascending distance, and cap the output (15 results for text search, 20 for category search) to ensure relevancy and prevent UI clutter.
+
+\textbf{Geocoding:} The \texttt{geocode()} method resolves destination names to coordinates using Nominatim (OpenStreetMap) as the primary geocoder with a strict 5\,000\,ms timeout and \texttt{User-Agent: WanderMate/1.0} header. On failure or empty results, it falls back to Google Places Text Search. The route is exposed at \texttt{GET /api/poi/geocode?q=query}.
 
 A shared \texttt{node-cache} instance sits in front of all adapter methods. Cache TTLs are: 30 minutes for search results, 24 hours for place details, and 1 hour for route calculations. If Google Places is unavailable at runtime, \texttt{TravelService} falls back to returning ORS POI results, satisfying NFR-08 without any change to the calling code.
 
@@ -735,7 +740,7 @@ A \texttt{syncQueue} persists unsent mutations to AsyncStorage when the device i
 
 The social feed subsystem manages the public layer of WanderMate. When a user publishes a trip, the \texttt{POST /api/feed/publish/:tripId} endpoint creates a \texttt{FeedPost} document containing denormalised metadata: author name and avatar, trip name, destination, cover image, date range, duration, participant count, total budget (summed from expenses), and stop count. This denormalised snapshot approach ensures feed card rendering is independent of trip mutations. The trip is marked as published (\texttt{isPublished: true}) and added to the user's \texttt{publishedTrips[]} array. A Firebase event is written to \texttt{feed/\{postId\}} for real-time propagation.
 
-The feed endpoint supports pagination via \texttt{skip/limit} with two modes: ``Discover'' (all posts sorted by \texttt{createdAt}) and ``Following'' (posts by followed users only). The \texttt{feedStore} on the client manages pagination state and implements infinite scroll via \texttt{onEndReached}.
+The feed endpoint supports offset-based pagination via page + \texttt{skip/limit} with two modes: ``Discover'' (all posts sorted by \texttt{createdAt}) and ``Following'' (posts by followed users only). The \texttt{feedStore} on the client manages pagination state and implements infinite scroll via \texttt{onEndReached}.
 
 Like/unlike is implemented as a toggle: the \texttt{POST /api/feed/:postId/like} endpoint adds or removes the user's UID from the \texttt{likes[]} array and updates the denormalised \texttt{likeCount}.
 
@@ -803,7 +808,7 @@ Mobile Client (Explore screen) $\rightarrow$ API Gateway \texttt{/api/poi/search
 Collaborator A edits a stop on Mobile Client $\rightarrow$ \texttt{tripStore} calls API Gateway, which updates the Trip document in MongoDB and writes \texttt{\{updatedAt, lastEditedBy\}} to Firebase \texttt{trips/\{tripId\}} $\rightarrow$ Firebase broadcasts to all registered \texttt{onValue} listeners $\rightarrow$ Collaborator B's \texttt{tripStore} receives the event and re-fetches the trip from MongoDB via the API $\rightarrow$ UI re-renders with updated data. \\
 
 3 & Feed Publish &
-User taps ``Publish'' in Trip Detail screen $\rightarrow$ \texttt{feedStore.publishTrip()} calls \texttt{POST /api/feed/publish/:tripId} $\rightarrow$ backend creates \texttt{FeedPost} document with denormalised metadata, marks trip as published, adds to user's \texttt{publishedTrips[]}, writes event to Firebase \texttt{feed/\{postId\}} $\rightarrow$ feed cards appear for all users on next feed fetch; followers receive real-time notification through Firebase. \\
+User taps ``Publish'' in Trip Detail screen $\rightarrow$ \texttt{feedStore.publishTrip()} calls \texttt{POST /api/feed/publish/:tripId} $\rightarrow$ backend creates \texttt{FeedPost} document with denormalised metadata, marks trip as published, adds to user's \texttt{publishedTrips[]}, writes event to Firebase \texttt{feed/\{postId\}} $\rightarrow$ feed cards appear for all users on the next feed refresh/poll cycle. \\
 
 \rowcolor{tablealtbg}
 4 & Itinerary Clone &
