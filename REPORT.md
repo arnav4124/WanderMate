@@ -287,8 +287,8 @@ npx expo start             # Scan QR or press 'a' for Android
 | FR-02 | Create/manage trips | `app/trip/create.tsx`, `app/(tabs)/index.tsx` |
 | FR-03 | Day-by-day itinerary | `app/trip/[id].tsx` |
 | FR-04 | Drag-and-drop reorder | `app/trip/[id].tsx` (DraggableFlatList) |
-| FR-05 | POI discovery | `app/(tabs)/explore.tsx` |
-| FR-06 | Add POI to itinerary | `app/(tabs)/explore.tsx` → trip selector |
+| FR-05 | POI discovery (Haversine proximity sorting) | `app/(tabs)/explore2.tsx` |
+| FR-06 | Add POI to itinerary (13+ Categories) | `app/(tabs)/explore2.tsx` → trip selector |
 | FR-07 | Budget tracking | `app/(tabs)/budget.tsx`, `stores/budgetStore.ts` |
 | FR-08 | Expense split | `app/(tabs)/budget.tsx` (per-person calculation) |
 | FR-09 | Interactive Leaflet map | `app/trip/map/[id].tsx` (WebView + Leaflet) |

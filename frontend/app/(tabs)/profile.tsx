@@ -80,7 +80,7 @@ export default function ProfileScreen() {
                             {profile?.followers?.length || 0}
                         </Text>
                         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                            Friends
+                            Followers
                         </Text>
                     </View>
                     <View style={styles.statDivider} />
@@ -89,7 +89,7 @@ export default function ProfileScreen() {
                             {profile?.following?.length || 0}
                         </Text>
                         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                            Friends (following)
+                            Following
                         </Text>
                     </View>
                 </View>
@@ -120,10 +120,10 @@ export default function ProfileScreen() {
                 </Surface>
             </View>
 
-            {/* Friend Requests */}
+            {/* Follow Requests */}
             {requests.length > 0 && (
                 <Surface style={[styles.settingsCard, { backgroundColor: theme.colors.surface, marginBottom: 16 }]} elevation={1}>
-                    <Text variant="titleMedium" style={{ padding: 16, fontWeight: 'bold' }}>Friend Requests</Text>
+                    <Text variant="titleMedium" style={{ padding: 16, fontWeight: 'bold' }}>Follow Requests</Text>
                     <Divider />
                     {requests.map(reqUser => (
                         <List.Item

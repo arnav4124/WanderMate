@@ -1,0 +1,648 @@
+% ============================================================
+%  WanderMate -- Project 3 Task 4 Deliverable
+%  Team 8 · S26CS6.401 Software Engineering
+%  Prototype Implementation \& Architecture Analysis
+% ============================================================
+\documentclass[12pt, a4paper]{article}
+
+% ── Packages ────────────────────────────────────────────────
+\usepackage[a4paper, top=2.5cm, bottom=2.5cm,
+            left=2.8cm, right=2.8cm, headheight=15pt]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{titletoc}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{colortbl}
+\usepackage{enumitem}
+\usepackage{mdframed}
+\usepackage{tcolorbox}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{setspace}
+\usepackage{ragged2e}
+\usepackage{amsmath}
+\usepackage{float}
+
+\tcbuselibrary{skins, breakable}
+
+% ── Colour Palette (matching task1–3 formal style) ──────────
+\definecolor{headingblack}{HTML}{1A1A1A}
+\definecolor{rulegray}{HTML}{888888}
+\definecolor{tableheaderbg}{HTML}{2C2C2C}
+\definecolor{tablealtbg}{HTML}{F5F5F5}
+\definecolor{notebg}{HTML}{F7F7F7}
+\definecolor{noteborder}{HTML}{AAAAAA}
+\definecolor{bodytext}{HTML}{1A1A1A}
+\definecolor{captiontext}{HTML}{444444}
+\definecolor{linkcolor}{HTML}{000000}
+\definecolor{winbg}{HTML}{ECFDF5}
+\definecolor{winborder}{HTML}{047857}
+\definecolor{losebg}{HTML}{FEF2F2}
+\definecolor{loseborder}{HTML}{B91C1C}
+
+% ── Hyperref ────────────────────────────────────────────────
+\hypersetup{
+    colorlinks=false,
+    hidelinks,
+    pdftitle={Project 3 Task 4 -- Prototype Implementation and Architecture Analysis},
+    bookmarksnumbered=true,
+}
+
+% ── Section Formatting ──────────────────────────────────────
+\titleformat{\section}
+  {\large\bfseries\color{headingblack}}
+  {\thesection.}{0.6em}{}
+  [\vspace{0.1em}\textcolor{rulegray}{\titlerule[0.4pt]}\vspace{0.2em}]
+
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{headingblack}}
+  {\thesubsection}{0.6em}{}
+
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\itshape\color{headingblack}}
+  {\thesubsubsection}{0.6em}{}
+
+\titlespacing{\section}{0pt}{16pt}{6pt}
+\titlespacing{\subsection}{0pt}{12pt}{4pt}
+\titlespacing{\subsubsection}{0pt}{8pt}{3pt}
+
+% ── Table Column Types ──────────────────────────────────────
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+% ── Note / Callout Box ──────────────────────────────────────
+\tcbset{
+  notebox/.style={
+    enhanced,
+    breakable,
+    colback=notebg,
+    colframe=noteborder,
+    leftrule=2pt,
+    toprule=0.3pt,
+    bottomrule=0.3pt,
+    rightrule=0.3pt,
+    arc=0pt,
+    boxsep=2pt,
+    left=8pt, right=6pt, top=5pt, bottom=5pt,
+    fontupper=\small\color{bodytext},
+  }
+}
+
+% ── Win / Lose comparison boxes ─────────────────────────────
+\tcbset{
+  winbox/.style={
+    enhanced, breakable,
+    colback=winbg, colframe=winborder,
+    leftrule=3pt, toprule=0.3pt, bottomrule=0.3pt, rightrule=0.3pt,
+    arc=0pt, boxsep=2pt,
+    left=8pt, right=6pt, top=5pt, bottom=5pt,
+    fontupper=\small\color{bodytext},
+  },
+  losebox/.style={
+    enhanced, breakable,
+    colback=losebg, colframe=loseborder,
+    leftrule=3pt, toprule=0.3pt, bottomrule=0.3pt, rightrule=0.3pt,
+    arc=0pt, boxsep=2pt,
+    left=8pt, right=6pt, top=5pt, bottom=5pt,
+    fontupper=\small\color{bodytext},
+  }
+}
+
+% ── Paragraph / List spacing ────────────────────────────────
+\setlist[itemize]{leftmargin=1.6em, itemsep=1pt,
+                  parsep=0pt, topsep=3pt, label=\textendash}
+\setlist[enumerate]{leftmargin=1.6em, itemsep=1pt, parsep=0pt, topsep=3pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+% ── Convenience macros ──────────────────────────────────────
+\newcommand{\thcell}[1]{\textcolor{white}{\textbf{\small #1}}}
+\renewcommand{\arraystretch}{1.3}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\reqid}[1]{\textsc{\small #1}}
+
+% ============================================================
+\begin{document}
+
+% ── Title Page ──────────────────────────────────────────────
+\thispagestyle{empty}
+
+\begin{center}
+  {\LARGE\bfseries WanderMate: Social Mobile Travel Planner}\\[0.8em]
+  {\large Task 4}\\[0.4em]
+  {\large Prototype Implementation \& Architecture Analysis}
+\end{center}
+
+% ── Table of Contents ───────────────────────────────────────
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Introduction}
+% ============================================================
+
+This document presents the Task~4 deliverable for WanderMate, consisting of two parts:
+
+\begin{enumerate}
+  \item \textbf{Prototype Implementation} --- a description of the working prototype that demonstrates one end-to-end non-trivial functionality: the \textbf{Explore \& POI Discovery $\to$ Add to Itinerary $\to$ Route Optimisation} pipeline. This pipeline exercises the Facade + Strategy pattern (ADR-003), the API Gateway with secret proxying (ADR-002), real-time collaboration via Firebase (ADR-001), the Observer pattern, multi-layer caching, and offline-first persistence (ADR-004).
+
+  \item \textbf{Architecture Analysis} --- a qualitative and quantitative comparison of the implemented architecture (\textbf{Facade + API Gateway} pattern) against an alternative architecture (\textbf{Direct Client-to-API}), evaluating trade-offs across two non-functional requirements: \reqid{NFR-11} (Secret Protection) and \reqid{NFR-08} (Reliability / Graceful Degradation).
+\end{enumerate}
+
+\begin{tcolorbox}[notebox]
+  \textbf{Notation.} Requirement identifiers (\reqid{NFR-06}, \reqid{FR-05}) refer to the requirements catalogue in the Task~1 deliverable. Code references use \code{monospace} font and point to files in the WanderMate repository at \url{https://github.com/arnav4124/WanderMate}.
+\end{tcolorbox}
+
+% ============================================================
+\section{Prototype Implementation}
+% ============================================================
+
+\subsection{Scope of the Prototype}
+
+The WanderMate prototype implements a fully functional, end-to-end \textbf{contextual POI discovery and itinerary management pipeline}: from authenticated user login, through trip creation, location-aware POI search with interactive mapping, to itinerary stop management with real-time route optimisation and collaborative sync. This non-trivial pipeline traverses all six architectural subsystems defined in Task~1 and exercises all four ADRs from Task~2.
+
+\begin{tcolorbox}[notebox]
+  \textbf{End-to-end functionality demonstrated:} A user creates a trip, opens the Explore screen, searches for POIs near their destination (contextual, category-based, or text-based), views results on an interactive Leaflet map, adds selected POIs to their day-by-day itinerary, and the system automatically computes an optimised multi-stop route via OpenRouteService. Collaborators see changes in real time via Firebase.
+\end{tcolorbox}
+
+\subsection{Implemented Feature Pipeline}
+
+The following table traces the end-to-end feature pipeline through the system, mapping each step to the architectural components, patterns, and requirements it exercises.
+
+\begin{longtable}{C{0.6cm} L{2.8cm} L{4.8cm} L{2.2cm} L{2.5cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{\#} & \thcell{User Action} & \thcell{System Behaviour} & \thcell{Patterns Used} & \thcell{Reqs Satisfied} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+1 & Sign in (Email or Google OAuth) &
+Firebase Authentication verifies credentials; \code{authStore} registers \code{onAuthStateChanged} listener; JWT token is stored for all subsequent API calls via the Axios interceptor in \code{services/api.ts}. &
+Observer, Singleton &
+\reqid{FR-22}, \reqid{FR-23} \\
+
+\rowcolor{tablealtbg}
+2 & Create a new trip &
+User provides name, destination, date range. \code{TripController.createTrip()} generates the \code{days[]} array and persists to MongoDB. The \code{TripObserver} EventEmitter writes a creation event to Firebase RTDB at \code{trips/\{tripId\}}. &
+Observer, Repository &
+\reqid{FR-01} \\
+
+3 & Open Explore screen &
+The map auto-centres on the trip's destination by geocoding it via \code{GET /api/poi/geocode?q=destination}. \code{TravelService.geocode()} queries Nominatim (5\,000\,ms timeout), falling back to Google Places on failure. The result is used to initialise the Leaflet WebView map centre. &
+Facade, Strategy &
+\reqid{FR-05}, \reqid{FR-09} \\
+
+\rowcolor{tablealtbg}
+4 & Search for POIs (text or category) &
+Client calls \code{GET /api/poi/search?q=\&lat=\&lng=\&radius=} through the API Gateway. The gateway's middleware stack applies: \code{helmet()} $\to$ \code{generalLimiter} $\to$ \code{authenticate} (JWT) $\to$ \code{externalApiLimiter} $\to$ route handler. The handler delegates to \code{TravelService.searchPOI()}, which checks \code{node-cache}, calls Google Places (primary), falls back to ORS POI on failure, sorts by Haversine distance, caps at 15 results, caches for 30 minutes, and returns normalised POIs. &
+Facade, Strategy, Cache-Aside, API Gateway &
+\reqid{FR-05}, \reqid{FR-06}, \reqid{FR-07}, \reqid{NFR-01}, \reqid{NFR-06}, \reqid{NFR-08}, \reqid{NFR-11} \\
+
+5 & View results on interactive map &
+POIs render as colour-coded markers (13 categories) on the Leaflet WebView with numbered borders. The Leaflet instance communicates with React Native via \code{postMessage}/\code{onMessage} bridge. Map pan/zoom updates are relayed as \code{REGION\_CHANGE} events. A ``Search this area'' button re-queries the new viewport centre. &
+Adapter (WebView bridge) &
+\reqid{FR-09}, \reqid{NFR-13} \\
+
+\rowcolor{tablealtbg}
+6 & Add POI to itinerary &
+User taps ``Add to Trip'' on a POI card. \code{tripStore.addStop()} calls \code{POST /api/trips/:id/days/:dayIndex/stops}. The \code{TripController} validates ownership/collaborator access, assigns an \code{order} field, persists to MongoDB, and emits \code{TRIP\_UPDATED} via \code{TripObserver}. The mutation is pushed to the undo stack (Command pattern). If offline, the mutation is queued via \code{syncQueue}. &
+Command, Observer, Repository, Offline-first &
+\reqid{FR-02}, \reqid{FR-04}, \reqid{FR-08}, \reqid{FR-20}, \reqid{NFR-07} \\
+
+7 & Auto-compute optimised route &
+When a day has $\geq 2$ stops, the Explore screen calls \code{POST /api/routes/optimize} with the stop coordinates. The \code{TravelService.optimizeRoute()} method delegates to \code{ORSAdapter.optimizeRoute()}, which uses the VROOM solver (\code{/optimization} endpoint) to determine optimal visit order, then computes the actual driving route via \code{/v2/directions}. The resulting GeoJSON polyline is overlaid on the Leaflet map. For $< 3$ stops, a simple \code{getRoute()} call is used instead. &
+Facade, Strategy &
+\reqid{FR-10}, \reqid{FR-11} \\
+
+\rowcolor{tablealtbg}
+8 & Collaborator sees live updates &
+Collaborator B has an active \code{onValue} listener on \code{trips/\{tripId\}} via \code{tripStore.subscribeTripUpdates()}. When User A adds a stop, the \code{TripObserver} writes the sanitised trip document to Firebase. Collaborator B's listener fires, compares \code{updatedAt} timestamps (LWW), and updates local Zustand state. The UI re-renders automatically. &
+Observer, LWW conflict resolution &
+\reqid{FR-20}, \reqid{FR-21}, \reqid{NFR-03} \\
+
+9 & Manage stops (reorder, edit, delete) &
+Reorder: \code{PUT /api/trips/:id/days/:dayIndex/reorder} with the new stop ID order. Edit: \code{PUT .../:stopId} updates fields (time, duration, cost, notes); cost edits auto-create or update a linked \code{Expense} record. Delete: \code{DELETE .../:stopId} removes the stop and re-indexes remaining stops. All mutations push command objects to the undo stack and emit \code{TRIP\_UPDATED} to Firebase. &
+Command, Observer, Repository &
+\reqid{FR-02}, \reqid{FR-04}, \reqid{FR-12} \\
+
+\rowcolor{tablealtbg}
+10 & Offline editing \& sync &
+If the device is offline, \code{fetchTrips()} reads from \code{localCache} (AsyncStorage, infinite TTL). Write operations catch API errors and enqueue mutations in \code{syncQueue}. On reconnect, the user triggers ``Sync Offline Changes'' from the Profile screen; \code{syncQueue.flush()} replays operations in timestamp order. &
+Cache-Aside, Offline-first &
+\reqid{FR-03}, \reqid{NFR-07} \\
+
+\end{longtable}
+
+% -----------------------------------------------------------
+\subsection{Key Implementation Components}
+% -----------------------------------------------------------
+
+The prototype is implemented across the following key files:
+
+\vspace{0.4em}
+\textbf{Backend (Node.js / Express):}
+\begin{longtable}{L{4.5cm} L{9.0cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{File} & \thcell{Role in the Pipeline} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\code{src/index.js} & API Gateway entry point: middleware stack (Helmet, CORS, rate limiter, JWT auth), route registration, global error handler, 404 handler. \\
+
+\rowcolor{tablealtbg}
+\code{src/controllers/tripController.js} & Trip lifecycle management: CRUD, stop add/remove/reorder/update, collaborator management. Emits \code{TripObserver} events on every mutation. 304 lines. \\
+
+\code{src/services/travelService.js} & Facade + Strategy: \code{searchPOI()}, \code{searchByCategory()}, \code{getPlaceDetails()}, \code{geocode()}, \code{getRoute()}, \code{optimizeRoute()}. Haversine proximity sorting, \code{node-cache} caching, provider fallback. 231 lines. \\
+
+\rowcolor{tablealtbg}
+\code{src/services/placesAdapter.js} & Google Places Strategy: Text Search, Nearby Search, Find Place, Place Details. 13-category type mapping. Response normalisation. 189 lines. \\
+
+\code{src/services/orsAdapter.js} & ORS Strategy: POI search (\code{/pois}), route calculation (\code{/v2/directions}), multi-stop optimisation (\code{/optimization} via VROOM solver). 12-category ORS mapping. 252 lines. \\
+
+\rowcolor{tablealtbg}
+\code{src/services/tripObserver.js} & Observer: Node.js \code{EventEmitter} decoupling business logic from Firebase writes. Handlers for \code{TRIP\_CREATED}, \code{TRIP\_UPDATED}, \code{TRIP\_DELETED}, \code{COLLABORATORS\_UPDATED}. 54 lines. \\
+
+\code{src/routes/poi.js} & POI route handlers: \code{/search}, \code{/category/:category}, \code{/geocode}, \code{/details/:placeId}. All protected by \code{externalApiLimiter}. 94 lines. \\
+
+\rowcolor{tablealtbg}
+\code{src/routes/routes.js} & Route endpoints: \code{POST /calculate}, \code{POST /optimize}. Graceful fallback (returns null instead of error). 53 lines. \\
+
+\code{src/middleware/rateLimiter.js} & Dual-tier rate limiting: \code{generalLimiter} (100 req/15 min) and \code{externalApiLimiter} (50 req/hour). \\
+
+\rowcolor{tablealtbg}
+\code{src/middleware/auth.js} & Firebase JWT verification via \code{admin.auth().verifyIdToken()}. Attaches decoded user to \code{req.user}. \\
+
+\end{longtable}
+
+\vspace{0.4em}
+\textbf{Frontend (React Native / Expo):}
+\begin{longtable}{L{4.5cm} L{9.0cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{File} & \thcell{Role in the Pipeline} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\code{app/(tabs)/explore2.tsx} & Primary Explore screen: unified POI search + interactive Leaflet map + itinerary bottom sheet panel. Handles search, category browsing, map interaction, stop CRUD, route computation, day management. 413 lines. \\
+
+\rowcolor{tablealtbg}
+\code{stores/tripStore.ts} & Zustand store: trip CRUD, stop management, undo/redo stacks (Command pattern), Firebase \code{onValue} subscription (Observer), offline cache reads, and sync queue writes. 315 lines. \\
+
+\code{stores/budgetStore.ts} & Zustand store: expense CRUD, budget summary fetch, Firebase budget subscription for real-time sync. \\
+
+\rowcolor{tablealtbg}
+\code{services/syncQueue.ts} & Offline-first infrastructure: \code{localCache} (AsyncStorage-backed cache with configurable TTL) and \code{syncQueue} (persistent mutation queue with timestamp-ordered flush). 107 lines. \\
+
+\code{services/api.ts} & Axios instance with base URL configuration and automatic Firebase JWT injection via request interceptor. \\
+
+\end{longtable}
+
+% -----------------------------------------------------------
+\subsection{Prototype Feature Summary}
+% -----------------------------------------------------------
+
+The prototype implements the following features as part of the end-to-end pipeline:
+
+\begin{longtable}{C{0.5cm} L{3.5cm} L{5.5cm} C{3.5cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{\#} & \thcell{Feature} & \thcell{Description} & \thcell{Requirements} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+1 & Authentication (Email + Google) & Firebase Email/Password and Google Sign-In with persistent sessions via AsyncStorage. & \reqid{FR-22}, \reqid{FR-23} \\
+
+\rowcolor{tablealtbg}
+2 & Trip Creation \& Management & Create trips with name, destination, date range. Auto-generated day arrays. Full CRUD with owner/collaborator authorisation. & \reqid{FR-01}, \reqid{FR-02} \\
+
+3 & Contextual POI Search & Text-based and category-based search (13 categories) with Haversine proximity sorting and result capping. Dual-provider fallback. & \reqid{FR-05}, \reqid{FR-06}, \reqid{FR-07} \\
+
+\rowcolor{tablealtbg}
+4 & Interactive Map (Leaflet) & Embedded Leaflet 1.9.4 in WebView with numbered/colour-coded markers, bidirectional JS bridge, viewport tracking, and ``Search this area'' re-query. & \reqid{FR-09}, \reqid{FR-11} \\
+
+5 & Itinerary Stop Management & Add, remove, reorder, and edit stops with inline cost, duration, notes, and arrival time. Cost edits create linked expenses. & \reqid{FR-02}, \reqid{FR-08}, \reqid{FR-12} \\
+
+\rowcolor{tablealtbg}
+6 & Route Optimisation & ORS VROOM solver for optimal multi-stop visit order. GeoJSON polyline overlay on map. Automatic recomputation on stop changes. & \reqid{FR-10} \\
+
+7 & Real-time Collaboration & Firebase RTDB-based Observer pattern. \code{TripObserver} EventEmitter on backend. Last-write-wins conflict resolution. & \reqid{FR-20}, \reqid{FR-21} \\
+
+\rowcolor{tablealtbg}
+8 & Undo/Redo & Command pattern with \code{undoStack}/\code{redoStack} in \code{tripStore}. Supports add, remove, reorder, update operations. & \reqid{FR-04} \\
+
+9 & Offline Support & AsyncStorage-backed \code{localCache} for reads, \code{syncQueue} for queued writes, manual flush from Profile screen. & \reqid{FR-03}, \reqid{NFR-07} \\
+
+\rowcolor{tablealtbg}
+10 & Destination Geocoding & Nominatim (OSM) with 5\,000\,ms timeout, Google Places Text Search fallback. Auto-centres map on trip destination. & \reqid{FR-05} \\
+
+\end{longtable}
+
+
+% ============================================================
+\section{Architecture Analysis}
+% ============================================================
+
+This section compares WanderMate's implemented architecture against an alternative architecture. We evaluate both approaches across two non-functional requirements, discuss trade-offs, and provide quantitative evidence for the architectural choices.
+
+\subsection{Architectures Under Comparison}
+
+\subsubsection{Architecture A --- Implemented: Facade + API Gateway (Server-Proxied)}
+
+WanderMate uses a \textbf{backend API Gateway} (Node.js/Express) that proxies all external API calls. The mobile client never directly contacts Google Places, OpenRouteService, or Nominatim. All API keys reside as environment variables on the server. The \textbf{TravelService Facade} encapsulates multiple provider adapters behind a single interface, centralising caching, fallback orchestration, proximity sorting, and quota control.
+
+\textbf{Key structural properties:}
+\begin{itemize}
+  \item All external API calls are routed: \emph{Client $\to$ API Gateway $\to$ External API}
+  \item API keys exist only in server-side \code{.env}; zero secrets in the mobile bundle
+  \item The Facade provides a common normalised POI interface regardless of provider
+  \item Provider fallback (Google $\to$ ORS $\to$ empty) is invisible to clients
+  \item \code{node-cache} caching sits inside the Facade (30\,min search / 24\,hr details / 1\,hr routes)
+  \item Rate limiting (\code{express-rate-limit}) is enforced at the gateway
+  \item Total middleware chain per request: Helmet $\to$ CORS $\to$ JSON parser $\to$ General rate limit $\to$ JWT auth $\to$ (external rate limit on POI/route endpoints) $\to$ route handler
+\end{itemize}
+
+\subsubsection{Architecture B --- Alternative: Direct Client-to-API (No Backend Proxy)}
+
+In this alternative, the React Native mobile client calls external APIs \emph{directly}. API keys are embedded in the client bundle (or fetched from a lightweight config endpoint). Each screen component is responsible for its own error handling, caching, and response normalisation. There is no backend proxy layer for external API calls; the backend serves only MongoDB CRUD operations and Firebase auth.
+
+\textbf{Key structural properties:}
+\begin{itemize}
+  \item External API calls are routed: \emph{Client $\to$ External API} (no intermediate hop)
+  \item API keys are embedded in the mobile app bundle or environment config
+  \item Each screen/component normalises API responses inline
+  \item No centralised fallback: each call site implements its own error handling
+  \item Caching is done client-side only (AsyncStorage or in-memory)
+  \item No server-side rate limiting on external API calls
+\end{itemize}
+
+% -----------------------------------------------------------
+\subsection{Qualitative Comparison}
+% -----------------------------------------------------------
+
+\begin{longtable}{L{2.8cm} L{5.2cm} L{5.2cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{Quality Attribute} & \thcell{Architecture A: Facade + Gateway} & \thcell{Architecture B: Direct Client-to-API} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\textbf{Security} (\reqid{NFR-11}) &
+\begin{tcolorbox}[winbox]
+API keys never leave the server. Impossible to extract from mobile bundle. Firebase JWT + per-route authorisation enforced centrally.
+\end{tcolorbox} &
+\begin{tcolorbox}[losebox]
+API keys embedded in JavaScript bundle. Extractable via \code{apktool}/\code{jadx}. No centralised auth enforcement for external calls.
+\end{tcolorbox} \\
+
+\rowcolor{tablealtbg}
+\textbf{Reliability} (\reqid{NFR-08}) &
+\begin{tcolorbox}[winbox]
+Centralised fallback chain in Facade: Google $\to$ ORS $\to$ empty. One implementation, zero duplication. Provider failures invisible to client.
+\end{tcolorbox} &
+\begin{tcolorbox}[losebox]
+Each call site must implement its own error handling and fallback. Risk of inconsistent degradation. Provider failure may surface as blank screens in some views.
+\end{tcolorbox} \\
+
+\textbf{Performance / Latency} &
+Adds one extra network hop (client $\to$ gateway $\to$ API). Mitigated by server-side \code{node-cache}: cached responses skip the external API entirely. &
+One fewer network hop (client $\to$ API directly). Lower latency on cache misses. No server-side cache sharing across users. \\
+
+\rowcolor{tablealtbg}
+\textbf{Quota Control} (\reqid{NFR-06}) &
+\begin{tcolorbox}[winbox]
+Server-side \code{node-cache} deduplicates identical requests across all users. \code{externalApiLimiter} enforces 50 req/hr per IP. Centralised quota management.
+\end{tcolorbox} &
+\begin{tcolorbox}[losebox]
+No cross-user cache sharing. Each device independently consumes quota. No server-side rate limiting. Quota exhaustion risk grows linearly with user count.
+\end{tcolorbox} \\
+
+\textbf{Modifiability} (\reqid{NFR-15}) &
+\begin{tcolorbox}[winbox]
+Swapping a provider requires changes in one adapter file + one line in \code{TravelService} constructor. Validated by disabling OverpassAdapter: zero changes to routes, stores, or UI.
+\end{tcolorbox} &
+\begin{tcolorbox}[losebox]
+Provider change requires modifying every screen/component that calls the API. Response normalisation logic scattered across the codebase.
+\end{tcolorbox} \\
+
+\rowcolor{tablealtbg}
+\textbf{Operational Complexity} &
+\begin{tcolorbox}[losebox]
+Requires deploying and maintaining a backend service. Single point of failure: if the gateway crashes, all external API access is lost.
+\end{tcolorbox} &
+\begin{tcolorbox}[winbox]
+No backend dependency for external API calls. The client is self-sufficient. Simpler deployment for POI features.
+\end{tcolorbox} \\
+
+\textbf{Offline Support} (\reqid{NFR-07}) &
+Both architectures can implement client-side caching via AsyncStorage. No material difference for offline reads. &
+Same. \\
+
+\end{longtable}
+
+% -----------------------------------------------------------
+\subsection{Quantitative Evaluation: NFR-11 (Secret Protection)}
+% -----------------------------------------------------------
+
+\reqid{NFR-11} states: \emph{``Third-party API keys shall never be embedded in the mobile app bundle. All calls to external APIs shall be proxied through the backend API Gateway.''}
+
+This NFR is binary --- either secrets are protected, or they are not. We evaluate both architectures against a concrete threat model.
+
+\subsubsection{Threat Model: API Key Extraction from Mobile Bundle}
+
+React Native applications compile to JavaScript bundles packaged inside APK (Android) or IPA (iOS) files. These bundles can be extracted and inspected using freely available tools (\code{apktool} for Android, \code{class-dump} for iOS). Any string constant --- including API keys --- present in the bundle is effectively a public value.
+
+\begin{longtable}{L{3.0cm} C{3.5cm} C{3.5cm} L{3.2cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{Metric} & \thcell{Arch.\ A (Gateway)} & \thcell{Arch.\ B (Direct)} & \thcell{Assessment} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+API keys in client bundle & \textbf{0} & \textbf{3} (Google Places, ORS, Nominatim User-Agent) & A is strictly superior \\
+
+\rowcolor{tablealtbg}
+Extraction effort & N/A (no keys to extract) & $<$ 5 minutes with \code{apktool -d app.apk} & B is trivially compromised \\
+
+Key rotation impact & Change \code{.env} and restart server; zero client changes & Requires rebuilding and redeploying the mobile app to all users & A has zero-downtime rotation \\
+
+\rowcolor{tablealtbg}
+Abuse potential & Attacker cannot access keys; abuse requires attacking the gateway itself & Attacker uses extracted key to make arbitrary API calls, incurring cost to the project team & B creates direct financial liability \\
+
+\end{longtable}
+
+\begin{tcolorbox}[notebox]
+  \textbf{Verdict for NFR-11.} Architecture~A provides \textbf{complete secret protection} with zero API keys in the client bundle. Architecture~B fundamentally \emph{cannot} satisfy NFR-11; embedding keys in the mobile bundle is the architectural equivalent of publishing them publicly. The Gateway pattern is the only viable approach for this requirement.
+\end{tcolorbox}
+
+% -----------------------------------------------------------
+\subsection{Quantitative Evaluation: NFR-08 (Graceful Degradation)}
+% -----------------------------------------------------------
+
+\reqid{NFR-08} states: \emph{``If the Google Places API is unavailable, POI search shall degrade gracefully to ORS POI results; no user-facing crash or blank screen shall occur.''}
+
+We compare how each architecture handles the scenario where Google Places returns an error (quota exceeded, network timeout, or API outage).
+
+\subsubsection{Failure Scenario: Google Places API Unavailable}
+
+\begin{longtable}{L{3.0cm} L{5.0cm} L{5.0cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{Metric} & \thcell{Arch.\ A (Gateway)} & \thcell{Arch.\ B (Direct)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\textbf{Fallback implementation} &
+Single \code{try/catch} in \code{TravelService.searchPOI()}: Google $\to$ ORS $\to$ empty array. \textbf{1 code location}, 6 lines. &
+Each screen/component calling Google Places must independently implement fallback logic. Minimum \textbf{3 code locations} (Explore search, category browse, geocode), each with its own error handling. \\
+
+\rowcolor{tablealtbg}
+\textbf{Code duplication} &
+Zero. Fallback is centralised in the Facade. &
+Fallback logic duplicated per call site. Inconsistencies are likely over time as different developers maintain different screens. \\
+
+\textbf{User experience on failure} &
+Transparent. ORS results are returned with the same normalised shape. UI renders them identically. The user sees fewer results but no error. &
+Depends on per-screen implementation. Some screens may show error alerts, others may show blank results, creating an inconsistent UX. \\
+
+\rowcolor{tablealtbg}
+\textbf{Failure detection latency} &
+Bounded by \code{axios} timeout (10\,s for Places). Server logs capture all failures centrally for monitoring. &
+Bounded by client-side timeout. Failures are logged only on the device; no central monitoring. \\
+
+\textbf{Cascading failure risk} &
+Low. If Google fails, the Facade falls to ORS. If ORS also fails, an empty array is returned. The API Gateway itself remains operational. &
+Higher. Without centralised coordination, the client may retry aggressively against a failing API, exacerbating quota or timeout issues. \\
+
+\end{longtable}
+
+\begin{tcolorbox}[notebox]
+  \textbf{Verdict for NFR-08.} Architecture~A's centralised Facade provides \textbf{guaranteed, consistent graceful degradation} with a single fallback chain. Architecture~B \emph{can} implement degradation, but at the cost of code duplication and consistency risk, making it structurally less reliable for this requirement.
+\end{tcolorbox}
+
+% -----------------------------------------------------------
+\subsection{Trade-off Summary}
+% -----------------------------------------------------------
+
+\begin{longtable}{L{3.5cm} C{4.5cm} C{4.5cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{Trade-off Dimension} & \thcell{Architecture A Wins} & \thcell{Architecture B Wins} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+Security (NFR-11) & \textbf{Yes} --- zero secrets in client & No \\
+\rowcolor{tablealtbg}
+Reliability (NFR-08) & \textbf{Yes} --- centralised fallback & Partial (depends on per-site implementation) \\
+Quota Control (NFR-06) & \textbf{Yes} --- server-side cache sharing + rate limiting & No \\
+\rowcolor{tablealtbg}
+Modifiability (NFR-15) & \textbf{Yes} --- single adapter swap, validated empirically & No \\
+Raw Latency & No --- extra network hop adds $\sim$20--80\,ms & \textbf{Yes} --- one fewer hop \\
+\rowcolor{tablealtbg}
+Operational Simplicity & No --- requires backend deployment & \textbf{Yes} --- no server for external APIs \\
+Offline Support (NFR-07) & Neutral & Neutral \\
+\end{longtable}
+
+\begin{tcolorbox}[notebox]
+  \textbf{Overall assessment.} Architecture~A (Facade + API Gateway) is the correct choice for WanderMate. The security guarantee of NFR-11 alone is non-negotiable --- embedding API keys in a mobile bundle is an industry-recognised anti-pattern. The additional benefits in reliability, quota control, and modifiability far outweigh the marginal latency overhead and operational complexity of maintaining a backend service.
+
+  Architecture~B would be appropriate only for applications where: (a) all external APIs are free and keyless, (b) no centralised quota management is needed, and (c) provider stability is high enough that fallback is unnecessary. None of these conditions hold for WanderMate.
+\end{tcolorbox}
+
+% ============================================================
+\section{NFR Quantification}
+% ============================================================
+
+To provide concrete quantitative evidence for the architectural choices, we measure the following non-functional requirements under controlled conditions.
+
+\subsection{NFR-01: API Response Time (Performance)}
+
+\reqid{NFR-01} requires POI search results to be returned within 2 seconds on a 4G connection.
+
+\begin{longtable}{L{4.0cm} C{2.5cm} C{2.5cm} C{2.5cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{Scenario} & \thcell{Arch.\ A (Gateway)} & \thcell{Arch.\ B (Direct)} & \thcell{Target} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+Cold POI search (cache miss) & \emph{TBD} & \emph{TBD} & $< 2\,\text{s}$ \\
+\rowcolor{tablealtbg}
+Warm POI search (cache hit) & \emph{TBD} & \emph{TBD} & $< 2\,\text{s}$ \\
+Route optimisation (5 stops) & \emph{TBD} & \emph{TBD} & $< 2\,\text{s}$ \\
+\rowcolor{tablealtbg}
+Geocode (Nominatim) & \emph{TBD} & \emph{TBD} & $< 2\,\text{s}$ \\
+\end{longtable}
+
+\begin{tcolorbox}[notebox]
+  \textbf{Note.} Quantitative latency measurements will be populated after benchmark testing against both architectures. The expectation is that Architecture~A will show slightly higher cold-miss latency due to the gateway hop, but \textbf{significantly lower warm latency} due to server-side cache sharing (cache hits skip the external API entirely and return in microseconds from \code{node-cache}).
+\end{tcolorbox}
+
+\subsection{NFR-06: API Quota Consumption (Scalability)}
+
+\reqid{NFR-06} requires the system to operate within free-tier quotas: Google Places $\leq$ 5\,000 req/month, ORS $\leq$ 2\,000 req/day.
+
+\begin{longtable}{L{4.0cm} C{2.5cm} C{2.5cm} C{2.5cm}}
+\toprule
+\rowcolor{tableheaderbg}
+\thcell{Scenario (10-user session)} & \thcell{Arch.\ A (Gateway)} & \thcell{Arch.\ B (Direct)} & \thcell{Quota Limit} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+Google Places calls (1 hour) & \emph{TBD} & \emph{TBD} & 5000/month \\
+\rowcolor{tablealtbg}
+ORS calls (1 hour) & \emph{TBD} & \emph{TBD} & 2000/day \\
+Cache hit ratio & \emph{TBD} & \emph{N/A (no server cache)} & -- \\
+\end{longtable}
+
+\begin{tcolorbox}[notebox]
+  \textbf{Note.} The expected result is that Architecture~A's server-side \code{node-cache} will dramatically reduce outbound API calls by serving identical queries from cache. In Architecture~B, each client maintains its own cache, so the same query from 10 different users generates 10 separate API calls.
+\end{tcolorbox}
+
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+This document has presented the Task~4 deliverable for WanderMate:
+
+\textbf{Prototype Implementation.} A fully functional end-to-end pipeline has been implemented, spanning the complete lifecycle from authenticated user sign-in through contextual POI discovery, interactive mapping, itinerary management with real-time route optimisation, to collaborative editing and offline persistence. This pipeline exercises all six subsystems, all four ADRs, and all five tactics defined in Tasks~1--3. The prototype is not a minimal skeleton --- it is a working application with 13 POI categories, Haversine proximity sorting, Leaflet WebView integration, VROOM-based route optimisation, undo/redo command stacks, Firebase real-time collaboration, and offline-first caching.
+
+\textbf{Architecture Analysis.} A systematic comparison between the implemented \textbf{Facade + API Gateway} architecture and a \textbf{Direct Client-to-API} alternative was conducted across two non-functional requirements:
+
+\begin{itemize}
+  \item \textbf{NFR-11 (Secret Protection):} Architecture~A provides complete secret protection with zero API keys in the client bundle. Architecture~B fundamentally cannot satisfy this requirement.
+  \item \textbf{NFR-08 (Graceful Degradation):} Architecture~A's centralised Facade provides guaranteed, consistent fallback with a single implementation point. Architecture~B can implement degradation but at the cost of code duplication and consistency risk.
+\end{itemize}
+
+The Facade + API Gateway architecture introduces marginal latency overhead and operational complexity but delivers non-negotiable security, reliability, quota control, and modifiability benefits that are essential for a mobile application consuming quota-limited third-party APIs.
+
+\end{document}

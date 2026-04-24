@@ -124,7 +124,7 @@
 \section{Introduction}
 % ============================================================
 
-WanderMate is a social, collaborative mobile travel planner built as a React Native (Expo) frontend communicating with a Node.js/Express backend, backed by MongoDB for persistent storage and Firebase Realtime Database for real-time event propagation. The system integrates multiple external APIs --- Google Places (POI discovery), OpenRouteService (routing and optimization), and Overpass/OSM (disabled fallback) --- all proxied through a backend API Gateway.
+WanderMate is a social, collaborative mobile travel planner built as a React Native (Expo) frontend communicating with a Node.js/Express backend, backed by MongoDB for persistent storage and Firebase Realtime Database for real-time event propagation. The system integrates multiple external APIs --- Google Places (POI discovery), OpenRouteService (routing and optimization), Nominatim (geocoding with fallback to Google Places), and Overpass/OSM (disabled fallback) --- all proxied through a backend API Gateway.
 
 The architecture must simultaneously satisfy demanding non-functional requirements spanning \textbf{performance}, \textbf{security}, \textbf{availability}, \textbf{scalability}, and \textbf{modifiability}, while operating within the economic constraints of free-tier API quotas. This document catalogues the \textbf{five architectural tactics} and \textbf{two design patterns} that form the backbone of WanderMate's architectural strategy, linking each to specific NFRs and illustrating their implementation with diagrams.
 
@@ -448,7 +448,7 @@ Without a unifying layer, each API consumer (Express route handler) would need t
 
 \subsubsection{Solution Applied}
 
-The \code{TravelService} Facade exposes five high-level methods (\code{searchPOI}, \code{searchByCategory}, \code{getPlaceDetails}, \code{getRoute}, \code{optimizeRoute}) that abstract away all provider-specific logic. Internally, it delegates to interchangeable adapter classes (\code{PlacesAdapter}, \code{ORSAdapter}, and the disabled \code{OverpassAdapter}), each of which implements the same normalised interface but targets a different external API. The Facade also encapsulates caching, fallback orchestration, and error handling.
+The \code{TravelService} Facade exposes six high-level methods (\code{searchPOI}, \code{searchByCategory}, \code{getPlaceDetails}, \code{getRoute}, \code{optimizeRoute}, \code{geocode}) that abstract away all provider-specific logic, including proximity sorting and geocoding. Internally, it delegates to interchangeable adapter classes (\code{PlacesAdapter}, \code{ORSAdapter}, and the disabled \code{OverpassAdapter}), each of which implements the same normalised interface but targets a different external API. The Facade also encapsulates caching, fallback orchestration, Haversine distance sorting with result capping (15 for text queries, 20 for categories), and error handling. The \code{geocode()} method provides destination-to-coordinate resolution using Nominatim (5\,000\,ms timeout) with Google Places Text Search as a fallback.
 
 \subsubsection{UML Class Diagram}
 
@@ -594,7 +594,7 @@ T5: Layered Architecture & Both Patterns & Both patterns enforce strict layer bo
 WanderMate's architecture is shaped by a deliberate set of five architectural tactics and two design patterns that collectively address the system's most demanding non-functional requirements:
 
 \begin{enumerate}
-  \item \textbf{Multi-layer Response Caching} ensures sub-2-second response times and free-tier quota compliance through a three-tier cache hierarchy (client $\to$ service $\to$ middleware).
+  \item \textbf{Multi-layer Response Caching} ensures sub-2-second response times and free-tier quota compliance through a three-tier cache hierarchy (client $\to$ middleware $\to$ service).
 
   \item \textbf{Authentication \& Secret Proxying} protects API keys from mobile bundle extraction and enforces Firebase JWT verification on every request via the API Gateway.
 
@@ -605,7 +605,7 @@ WanderMate's architecture is shaped by a deliberate set of five architectural ta
   \item \textbf{Separation of Concerns via Layered Architecture} enforces strict dependency direction across four layers on both backend and frontend, enabling independent evolution and provider swappability.
 \end{enumerate}
 
-The \textbf{Facade + Strategy} pattern (TravelService) unifies multiple external API providers behind a single interface, centralising caching, fallback, and quota management. The \textbf{Observer} pattern (Firebase Realtime Database subscriptions) enables real-time collaborative editing with sub-500ms propagation latency, decoupled publisher--subscriber communication, and automatic resource cleanup.
+The \textbf{Facade + Strategy} pattern (TravelService) unifies multiple external API providers behind a single interface, centralising caching, fallback, proximity sorting, geocoding, and quota management. The \textbf{Observer} pattern (Firebase Realtime Database subscriptions) enables real-time collaborative editing with sub-500ms propagation latency, decoupled publisher--subscriber communication, and automatic resource cleanup.
 
 These tactics and patterns are not applied in isolation --- they form a mutually reinforcing architectural strategy where the Facade centralises the application of caching, rate limiting, and degradation tactics, and the Observer pattern complements offline-first availability with real-time synchronisation on reconnect.
 

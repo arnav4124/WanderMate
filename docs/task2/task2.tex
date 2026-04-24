@@ -257,7 +257,7 @@ Following IEEE 42010, we define four viewpoints. Each viewpoint provides convent
 \begin{enumerate}
   \item \textbf{Mobile Client} (React Native / Expo) --- all user interaction, Zustand state management (\code{tripStore}, \code{budgetStore}, \code{feedStore}, \code{authStore}, \code{activeTripStore}), Leaflet WebView map, and offline cache (\code{localCache}, \code{syncQueue}).
   \item \textbf{API Gateway} (Node.js + Express) --- single backend entry point with middleware stack: \code{helmet()} security headers, \code{cors()}, \code{express.json()}, \code{generalLimiter} (100~req/15~min), and route-level \code{authenticate()} Firebase JWT verification (\code{middleware/auth.js}).
-  \item \textbf{POI \& Routing Service} (\code{TravelService} Facade) --- encapsulates \code{PlacesAdapter} (Google Places), \code{ORSAdapter} (OpenRouteService), and the disabled \code{OverpassAdapter} behind a unified interface with \code{node-cache} caching (30~min search, 24~hr details, 1~hr routes).
+  \item \textbf{POI \& Routing Service} (\code{TravelService} Facade) --- encapsulates \code{PlacesAdapter} (Google Places), \code{ORSAdapter} (OpenRouteService), and the disabled \code{OverpassAdapter} behind a unified interface with \code{node-cache} caching (30~min search, 24~hr details, 1~hr routes). Also provides a \code{geocode()} method using Nominatim (OSM) with Google Places fallback for destination resolution. All search results are sorted by Haversine distance from the map centre and capped at 15 (text) or 20 (category).
   \item \textbf{Itinerary \& Budget Engine} --- \code{Trip} and \code{Expense} Mongoose models, trip/budget routes, \code{TripController} with owner/collaborator authorization checks, \code{TripObserver} event emitter for Firebase sync.
   \item \textbf{Social Feed \& Community Service} --- \code{FeedPost} model with denormalised snapshots, feed pagination (\code{skip/limit}), publish/like/clone endpoints, follower graph (\code{User.followers[]}/\code{following[]}).
   \item \textbf{Auth \& User Profile} --- Firebase Authentication (Email/Password + Google OAuth), \code{User} Mongoose model, \code{authStore} with \code{onAuthStateChanged} listener.
@@ -279,7 +279,7 @@ The runtime interactions follow five primary data flows: POI \& Route Query, Col
 
 \textbf{MongoDB data model} (Mongoose ODM):
 \begin{itemize}
-  \item \textbf{Trip} (\code{models/Trip.js}) --- nested document: \code{name}, \code{destination}, \code{startDate}, \code{endDate}, \code{owner} (Firebase UID), \code{collaborators[]} (UIDs), \code{days[]} $\rightarrow$ \code{stops[]} with \code{name}, \code{lat}, \code{lng}, \code{category}, \code{order}, \code{cost}, etc. Indexes: \code{(owner, createdAt)}, \code{(collaborators)}, \code{(isPublished, publishedAt)}.
+  \item \textbf{Trip} (\code{models/Trip.js}) --- nested document: \code{name}, \code{destination}, \code{startDate}, \code{endDate}, \code{owner} (Firebase UID), \code{collaborators[]} (UIDs), \code{days[]} $\rightarrow$ \code{stops[]} with \code{name}, \code{lat}, \code{lng}, \code{category} (enum of 13 types: hotel, restaurant, landmark, activity, transport, shopping, museum, park, nightlife, medical, grocery, finance, other), \code{order}, \code{cost}, etc. Indexes: \code{(owner, createdAt)}, \code{(collaborators)}, \code{(isPublished, publishedAt)}.
   \item \textbf{Expense} (\code{models/Expense.js}) --- separate collection, referenced by \code{trip} ObjectId. Fields: \code{user}, \code{description}, \code{amount}, \code{currency}, \code{category} (accommodation | food | transport | activities | other), \code{date}, \code{dayNumber}, \code{splitAmong[]}. Indexes: \code{(trip, date)} and \code{(trip, user)}.
   \item \textbf{FeedPost} (\code{models/FeedPost.js}) --- denormalised snapshot: \code{trip} (ref), \code{author} (UID), \code{authorName}, \code{tripName}, \code{destination}, \code{duration}, \code{totalBudget}, \code{stopCount}, \code{likes[]} (UIDs), \code{likeCount}. Indexes on \code{createdAt}, \code{(author, createdAt)}, \code{likeCount}.
   \item \textbf{User} (\code{models/User.js}) --- \code{firebaseUid} (unique), \code{email}, \code{displayName}, \code{avatarUrl}, \code{followers[]} (UIDs), \code{following[]} (UIDs), \code{publishedTrips[]} (ObjectId refs). Indexes on \code{firebaseUid} and \code{email}.
@@ -536,8 +536,9 @@ We will implement a \textbf{Node.js/Express API Gateway} (\code{backend/src/inde
     \end{itemize}
   \item Proxies external API calls exclusively through the \code{TravelService} Facade, which instantiates adapters with keys from \code{process.env}:
     \begin{itemize}
-      \item \code{this.places = new PlacesAdapter(process.env.GOOGLE\_PLACES\_API\_KEY)} (\code{travelService.js}, line~11).
-      \item \code{this.ors = new ORSAdapter(process.env.ORS\_API\_KEY)} (\code{travelService.js}, line~12).
+      \item \code{this.places = new PlacesAdapter(process.env.GOOGLE\_PLACES\_API\_KEY)} (\code{travelService.js}, line~16).
+      \item \code{this.ors = new ORSAdapter(process.env.ORS\_API\_KEY)} (\code{travelService.js}, line~17).
+      \item Nominatim calls are made via \code{axios.get()} with \code{User-Agent: WanderMate/1.0} and a 5\,000\,ms timeout (\code{travelService.js}, lines~38--42).
     \end{itemize}
 \end{enumerate}
 
@@ -625,13 +626,14 @@ Without a unifying layer, adding or swapping a provider would require modifying 
 We will implement a \code{TravelService} class (\code{services/travelService.js}) that combines the \textbf{Facade} and \textbf{Strategy} patterns:
 
 \begin{enumerate}
-  \item \textbf{Facade interface:} Five public methods --- \code{searchPOI()}, \code{searchByCategory()}, \code{getPlaceDetails()}, \code{getRoute()}, \code{optimizeRoute()} --- abstract away all provider and caching logic.
+  \item \textbf{Facade interface:} Six public methods --- \code{searchPOI()}, \code{searchByCategory()}, \code{getPlaceDetails()}, \code{getRoute()}, \code{optimizeRoute()}, \code{geocode()} --- abstract away all provider, caching, sorting, and geocoding logic.
   \item \textbf{Strategy adapters:} Three adapter classes, each wrapping a specific API behind a common normalised output:
     \begin{itemize}
-      \item \code{PlacesAdapter} (\code{services/placesAdapter.js}) --- wraps Google Places (Text Search, Nearby Search, Find Place, Place Details). Normalises responses into the shared POI shape.
-      \item \code{ORSAdapter} (\code{services/orsAdapter.js}) --- wraps ORS POI and routing endpoints. Implements both simple routing (\code{/v2/directions}) and multi-stop optimization (\code{/optimization}).
+      \item \code{PlacesAdapter} (\code{services/placesAdapter.js}) --- wraps Google Places (Text Search, Nearby Search, Find Place, Place Details). Supports 13 POI categories mapped to Google Places types. Normalises responses into the shared POI shape.
+      \item \code{ORSAdapter} (\code{services/orsAdapter.js}) --- wraps ORS POI and routing endpoints. Category mappings use ORS category IDs (e.g., shopping: 500, medical: 460, finance: 430). Implements both simple routing (\code{/v2/directions}) and multi-stop optimization (\code{/optimization}).
       \item \code{OverpassAdapter} (\code{services/overpassAdapter.js}) --- implemented but currently disabled.
     \end{itemize}
+  \item \textbf{Proximity sorting:} Both \code{searchPOI()} and \code{searchByCategory()} compute the Haversine great-circle distance between the map centre and each POI using \code{\_calculateDistance(lat1, lon1, lat2, lon2)}, sort results by ascending distance, and apply a relevancy cap (15 results for text queries, 20 for category queries).
   \item \textbf{Singleton:} A module-level instance (\code{let instance = null}) with a \code{getTravelService()} factory function ensures one instance is shared across all route modules.
   \item \textbf{Caching:} A single \code{node-cache} instance inside the Facade applies per-method TTLs: 30~minutes for searches, 24~hours for details, 1~hour for routes, using key patterns such as \code{poi:*}, \code{cat:*}, \code{details:*}, and \code{route:*}.
   \item \textbf{Fallback chain:} \code{searchPOI()} attempts Google Places first, catches failures, and falls through to ORS:
