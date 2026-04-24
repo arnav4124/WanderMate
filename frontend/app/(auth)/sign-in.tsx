@@ -4,19 +4,11 @@ import { Text, Button, TextInput, useTheme, Surface } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-    GoogleAuthProvider,
-    signInWithCredential,
-    signInWithPopup,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     updateProfile,
 } from 'firebase/auth';
 import { auth } from '@/config/firebase';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-import { GOOGLE_WEB_CLIENT_ID } from '@/config/env';
-
-WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
     const theme = useTheme();
@@ -27,41 +19,6 @@ export default function SignInScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-
-    const redirectUri = AuthSession.makeRedirectUri({ scheme: 'wandermate' });
-    const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
-    const [request, response, promptAsync] = AuthSession.useAuthRequest(
-        {
-            clientId: GOOGLE_WEB_CLIENT_ID,
-            scopes: ['openid', 'profile', 'email'],
-            responseType: AuthSession.ResponseType.IdToken,
-            redirectUri,
-        },
-        discovery
-    );
-
-    React.useEffect(() => {
-        if (response?.type === 'success') {
-            const { id_token } = response.params;
-            const credential = GoogleAuthProvider.credential(id_token);
-            signInWithCredential(auth, credential).catch((err) => {
-                setError(err.message);
-            });
-        }
-    }, [response]);
-
-    const handleGoogleSignIn = async () => {
-        if (Platform.OS === 'web') {
-            try {
-                const provider = new GoogleAuthProvider();
-                await signInWithPopup(auth, provider);
-            } catch (err: any) {
-                setError(err.message);
-            }
-        } else {
-            promptAsync();
-        }
-    };
 
     const handleEmailAuth = async () => {
         if (!email || !password) {
@@ -179,24 +136,6 @@ export default function SignInScreen() {
                             {isSignUp ? 'Create Account' : 'Sign In'}
                         </Button>
 
-                        <View style={styles.divider}>
-                            <View style={[styles.dividerLine, { backgroundColor: theme.colors.outline }]} />
-                            <Text style={[styles.dividerText, { color: theme.colors.onSurfaceVariant }]}>OR</Text>
-                            <View style={[styles.dividerLine, { backgroundColor: theme.colors.outline }]} />
-                        </View>
-
-                        <Button
-                            mode="outlined"
-                            onPress={handleGoogleSignIn}
-                            disabled={Platform.OS !== 'web' && !request}
-                            icon="google"
-                            style={styles.googleButton}
-                            contentStyle={styles.buttonContent}
-                            labelStyle={styles.googleLabel}
-                        >
-                            Continue with Google
-                        </Button>
-
                         <Button
                             mode="text"
                             onPress={() => {
@@ -269,25 +208,6 @@ const styles = StyleSheet.create({
     buttonLabel: {
         fontSize: 16,
         fontWeight: '700',
-    },
-    divider: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginVertical: 20,
-    },
-    dividerLine: {
-        flex: 1,
-        height: 1,
-    },
-    dividerText: {
-        marginHorizontal: 16,
-        fontSize: 13,
-    },
-    googleButton: {
-        borderRadius: 12,
-    },
-    googleLabel: {
-        fontSize: 15,
     },
     switchButton: {
         marginTop: 12,
