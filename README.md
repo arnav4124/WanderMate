@@ -151,25 +151,20 @@ cd ../frontend
 npm install
 ```
 
-Edit `frontend/config/env.ts` with your Firebase web config:
+Open `frontend/config/env.ts` and update the `API_BASE_URL` to point to your backend:
 
 ```typescript
-export const FIREBASE_CONFIG = {
-  apiKey: 'your-firebase-web-api-key',
-  authDomain: 'your-project.firebaseapp.com',
-  projectId: 'your-firebase-project-id',
-  storageBucket: 'your-project.appspot.com',
-  messagingSenderId: '123456789',
-  appId: '1:123456789:web:abc123',
-  databaseURL: 'https://your-project-default-rtdb.firebaseio.com',
-};
+// Android Emulator: 10.0.2.2 maps to host machine's localhost
+export const API_BASE_URL = 'http://10.0.2.2:5000/api';
 
-export const GOOGLE_WEB_CLIENT_ID = 'xxxxx.apps.googleusercontent.com';
+// iOS Simulator: use 127.0.0.1
+// export const API_BASE_URL = 'http://127.0.0.1:5000/api';
 
-export const API_BASE_URL = 'http://10.0.2.2:5000/api'; // Android emulator
-// Use 'http://localhost:5000/api' for iOS simulator
-// Use 'http://YOUR_LOCAL_IP:5000/api' for physical device
+// Physical device: use your machine's local IP address
+// export const API_BASE_URL = 'http://192.168.x.x:5000/api';
 ```
+
+The Firebase client config (`FIREBASE_CONFIG`) and `GOOGLE_WEB_CLIENT_ID` in `env.ts` are already set for the project. If you fork the project and use your own Firebase instance, replace those values with your own from the Firebase Console.
 
 ### 4. Firebase Console Setup
 
@@ -194,6 +189,7 @@ npm run dev          # Starts on port 5000 with --watch for auto-reload
 ```
 
 You should see:
+
 ```
 WanderMate API Gateway running on port 5000
 ```
@@ -206,6 +202,7 @@ npx expo start       # Opens Expo dev tools
 ```
 
 Then:
+
 - Press `a` to open in Android emulator
 - Or scan the QR code with the **Expo Go** app on your phone
 
@@ -219,38 +216,41 @@ Then:
 ## API Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|--------|----------|--------------|
 | `GET` | `/api/health` | Health check (unauthenticated) |
-| `GET/POST/PUT/DELETE` | `/api/trips` | Trip CRUD |
-| `POST` | `/api/trips/:id/days/:dayIndex/stops` | Add stop to itinerary |
-| `PUT` | `/api/trips/:id/days/:dayIndex/reorder` | Reorder stops |
-| `GET` | `/api/poi/search?q=&lat=&lng=` | Search POIs |
-| `GET` | `/api/poi/category/:cat?lat=&lng=` | Browse by category |
-| `GET` | `/api/poi/geocode?q=` | Geocode destination |
-| `POST` | `/api/routes/optimize` | Optimise multi-stop route |
-| `GET/POST` | `/api/budget/:tripId` | Budget & expenses |
-| `GET` | `/api/feed` | Social feed (paginated) |
-| `POST` | `/api/feed/publish/:tripId` | Publish trip |
-| `POST` | `/api/feed/:postId/clone` | Clone itinerary |
-| `GET/POST` | `/api/users` | User profile & follow system |
+| `GET` | `/api/trips` | List all trips for the authenticated user |
+| `POST` | `/api/trips` | Create a new trip |
+| `GET` | `/api/trips/:id` | Get a single trip |
+| `PUT` | `/api/trips/:id` | Update trip metadata |
+| `DELETE` | `/api/trips/:id` | Delete a trip (owner only) |
+| `POST` | `/api/trips/:id/days/:dayIndex/stops` | Add a stop to a day |
+| `PUT` | `/api/trips/:id/days/:dayIndex/stops/:stopId` | Update a stop |
+| `DELETE` | `/api/trips/:id/days/:dayIndex/stops/:stopId` | Remove a stop |
+| `PUT` | `/api/trips/:id/days/:dayIndex/reorder` | Reorder stops in a day |
+| `POST` | `/api/trips/:id/collaborators` | Add a collaborator (must be a follower) |
+| `GET` | `/api/poi/search?q=&lat=&lng=` | Text search for POIs |
+| `GET` | `/api/poi/category/:cat?lat=&lng=` | Browse POIs by category |
+| `GET` | `/api/poi/geocode?q=` | Geocode a destination name |
+| `GET` | `/api/poi/details/:placeId` | Get enriched place details |
+| `POST` | `/api/routes/calculate` | Calculate a point-to-point route |
+| `POST` | `/api/routes/optimize` | Optimise a multi-stop route (VROOM) |
+| `GET` | `/api/budget/:tripId` | Get all expenses and budget summary |
+| `POST` | `/api/budget/:tripId` | Add an expense |
+| `PUT` | `/api/budget/:tripId/:expenseId` | Update an expense |
+| `DELETE` | `/api/budget/:tripId/:expenseId` | Delete an expense |
+| `GET` | `/api/feed` | Paginated social feed (`?type=following` or discover) |
+| `POST` | `/api/feed/publish/:tripId` | Publish a trip to the feed |
+| `POST` | `/api/feed/:postId/like` | Like / unlike a feed post |
+| `POST` | `/api/feed/:postId/clone` | Clone a published itinerary |
+| `GET` | `/api/users/me` | Get current user profile (creates on first login) |
+| `PUT` | `/api/users/me` | Update display name / avatar |
+| `GET` | `/api/users/search?q=` | Search users by name or email |
+| `GET` | `/api/users/me/friends` | Get mutual friends (following + followers) |
+| `GET` | `/api/users/me/requests` | Get incoming follow requests |
+| `POST` | `/api/users/:uid/follow` | Send a follow request |
+| `POST` | `/api/users/:uid/accept-follow` | Accept a follow request |
+| `POST` | `/api/users/:uid/deny-follow` | Deny a follow request |
+| `POST` | `/api/users/:uid/unfollow` | Unfollow a user |
+| `GET` | `/api/users/:uid` | Get a user's public profile |
 
-All endpoints (except `/api/health`) require a Firebase JWT Bearer token.
-
----
-
-## Team
-
-**Team 8** — S26CS6.401 Software Engineering
-
-| Member | Contributions |
-|--------|-------------|
-| Arnav Roy | Backend API, TravelService Facade, adapters, route handlers, feed & user routes |
-| Raghav Grover | Architecture documentation, frontend screens, explore/map integration |
-| Sanyam Agrawal | Frontend features, budget tracking, social feed UI |
-| Karthik | Collaborative editing, Firebase integration, trip observer |
-
----
-
-## License
-
-This project was developed as part of the S26CS6.401 Software Engineering course.
+All endpoints except `/api/health` require a `Authorization: Bearer <firebase-jwt>` header.
