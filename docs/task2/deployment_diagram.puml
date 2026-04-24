@@ -40,7 +40,7 @@ cloud "MongoDB Atlas\n(Managed Cloud)" as mongo #FEF3C7 {
 
 cloud "Google Cloud Platform" as gcp #EDE9FE {
   component "Firebase Auth\n(Email + Google OAuth)" as fauth #C4B5FD
-  database "Firebase RTDB\n(Event Bus)" as frtdb #C4B5FD
+  database "Firebase RTDB\n(Collaboration Sync)" as frtdb #C4B5FD
   component "Google Places API" as gapi #C4B5FD
 }
 
