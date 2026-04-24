@@ -727,6 +727,7 @@ The project process reinforced that architectural patterns are most valuable whe
 *WanderMate — Plan trips together, explore the world.*
 
 ## 17. Contributions
+
 - **Arnav Deshmukh**- Task 1 and Task 4
 - **Ayush Roy**- Task 1 and Task 4
 - **Sanyam Agarwal**- Task 1 and Task 4
