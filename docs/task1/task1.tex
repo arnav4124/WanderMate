@@ -192,7 +192,7 @@ Users shall be able to perform undo and redo on itinerary editing actions (add s
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural significance.} The dual-API design uses Google Places as the primary POI provider (for search, category browsing, ratings, photos, and opening hours) with the OpenRouteService (ORS) POI endpoint as a fallback when Google Places returns no results. An Overpass API adapter was initially developed but is currently disabled; the Facade pattern allows it to be re-enabled without changes to calling code. A server-side \texttt{node-cache} caching layer controls free-tier quota consumption. Nominatim (OpenStreetMap) is used as the geocoding provider for destination resolution, with a strict 5\,000\,ms timeout and Google Places Text Search as a fallback.
+  \textbf{Architectural significance.} The dual-API design uses OpenRouteService (ORS) as the primary POI provider (for search and category browsing) with the Google Places API as a quota-sensitive fallback that supplies richer enrichment data (photos, ratings, opening hours) when ORS returns no results. An Overpass API adapter was initially developed but is currently disabled; the Facade pattern allows it to be re-enabled without changes to calling code. A server-side \texttt{node-cache} caching layer controls free-tier quota consumption. Nominatim (OpenStreetMap) is used as the geocoding provider for destination resolution, with a strict 5\,000\,ms timeout and Google Places Text Search as a fallback.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -449,7 +449,7 @@ Zero overage cost at launch \\
 % -----------------------------------------------------------
 
 \begin{tcolorbox}[notebox]
-  \textbf{Architectural impact.} NFR-07 mandates the AsyncStorage-backed \texttt{localCache} and \texttt{syncQueue} modules on the client. NFR-08 is implemented via the Strategy pattern in \texttt{TravelService}: when Google Places fails, the search method falls back to ORS POI results without any change to the calling code or UI layer.
+  \textbf{Architectural impact.} NFR-07 mandates the AsyncStorage-backed \texttt{localCache} and \texttt{syncQueue} modules on the client. NFR-08 is implemented via the Strategy pattern in \texttt{TravelService}: ORS is queried first; if it returns no results, the search method falls back to Google Places without any change to the calling code or UI layer.
 \end{tcolorbox}
 
 \vspace{0.4em}
@@ -468,7 +468,7 @@ Core itinerary viewing and editing shall remain available when the device is off
 
 \rowcolor{tablealtbg}
 \reqid{NFR-08} & Reliability &
-If the Google Places API is unavailable, POI search shall degrade gracefully to ORS POI results; no user-facing crash or blank screen shall occur. The \texttt{TravelService.searchPOI()} method wraps each provider call in a try/catch and silently falls through to the next provider. &
+If the ORS POI endpoint returns no results, POI search shall fall back to Google Places seamlessly; if Google Places is also unavailable, an empty result set shall be returned with no user-facing crash or blank screen. The \texttt{TravelService.searchPOI()} method wraps each provider call in a try/catch and silently falls through to the next provider. &
 Zero crashes on external API failure \\
 
 \reqid{NFR-09} & Reliability &
@@ -628,7 +628,7 @@ Express routes (\texttt{trips}, \texttt{users}, \texttt{feed}, \texttt{budget}, 
 Mobile Client, MongoDB, Firebase Admin SDK, Google Places API, ORS \\
 
 \textbf{POI \& Routing Service}\newline(TravelService Facade) &
-Encapsulates the dual-API POI strategy (Google Places as primary, ORS POI as fallback) and ORS route optimisation behind a single \texttt{TravelService} interface. Implements response caching and provider fallback. An Overpass adapter exists but is currently disabled. &
+Encapsulates the dual-API POI strategy (ORS as primary, Google Places as quota-sensitive fallback) and ORS route optimisation behind a single \texttt{TravelService} interface. Implements response caching and provider fallback. An Overpass adapter exists but is currently disabled. &
 \texttt{TravelService} class (singleton), \texttt{PlacesAdapter}, \texttt{ORSAdapter}, \texttt{overpassAdapter} (disabled), \texttt{node-cache} instance &
 API Gateway, Google Places API, ORS \\
 
@@ -703,8 +703,8 @@ This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \text
 This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \texttt{TravelService} is instantiated as a singleton and exposes six methods to the gateway layer: \texttt{searchPOI(query, lat, lng, radius)}, \texttt{searchByCategory(category, lat, lng, radius)}, \texttt{getPlaceDetails(placeId, name, lat, lng)}, \texttt{getRoute(coordinates, profile)}, \texttt{optimizeRoute(coordinates)} (multi-stop visit-order optimization via ORS VROOM solver), and \texttt{geocode(query)} (Nominatim with Google Places fallback). Internally, two active adapters implement provider-specific API logic:
 
 \begin{itemize}
-  \item \textbf{PlacesAdapter} --- primary POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs. Returns normalised POI objects with ratings, photos, opening hours, price levels, and addresses. Supports 13 category types mapped to Google Places types (e.g., \texttt{shopping\_mall}, \texttt{night\_club}, \texttt{hospital}, \texttt{supermarket}, \texttt{bank}). Quota-sensitive: 5\,000 req/month on free tier.
-  \item \textbf{ORSAdapter} --- dual-purpose adapter serving both as a POI fallback (via the ORS \texttt{/pois} endpoint, limited to 2\,000m radius) and as the routing engine (via \texttt{/v2/directions} for route calculation and \texttt{/optimization} for multi-stop visit-order optimisation using the VROOM solver). Category mappings use ORS category IDs (e.g., shopping: 500, nightlife: 260/560, medical: 460, finance: 430).
+  \item \textbf{ORSAdapter} --- primary POI provider and routing engine. Queries the ORS \texttt{/pois} endpoint for POI search and the \texttt{/v2/directions} and \texttt{/optimization} endpoints for routing and multi-stop visit-order optimisation (VROOM solver). Category mappings use ORS category IDs (e.g., shopping: 500, nightlife: 260/560, medical: 460, finance: 430).
+  \item \textbf{PlacesAdapter} --- quota-sensitive fallback POI provider. Queries Google Places Text Search, Nearby Search, Find Place, and Place Details APIs, supplying richer enrichment data (photos, ratings, opening hours, price levels). Supports 13 category types mapped to Google Places types (e.g., \texttt{shopping\_mall}, \texttt{night\_club}, \texttt{hospital}, \texttt{supermarket}, \texttt{bank}). Quota: 5\,000 req/month on free tier.
   \item \textbf{OverpassAdapter} --- an OpenStreetMap data provider querying the Overpass API. The adapter is \emph{implemented but currently disabled} (entire file commented out). It can be re-enabled by uncommenting and importing it in \texttt{TravelService}, satisfying NFR-15.
 \end{itemize}
 
@@ -712,7 +712,7 @@ This module implements the \textbf{Facade} and \textbf{Strategy} patterns. \text
 
 \textbf{Geocoding:} The \texttt{geocode()} method resolves destination names to coordinates using Nominatim (OpenStreetMap) as the primary geocoder with a strict 5\,000\,ms timeout and \texttt{User-Agent: WanderMate/1.0} header. On failure or empty results, it falls back to Google Places Text Search. The route is exposed at \texttt{GET /api/poi/geocode?q=query}.
 
-A shared \texttt{node-cache} instance sits in front of all adapter methods. Cache TTLs are: 30 minutes for search results, 24 hours for place details, and 1 hour for route calculations. If Google Places is unavailable at runtime, \texttt{TravelService} falls back to returning ORS POI results, satisfying NFR-08 without any change to the calling code.
+A shared \texttt{node-cache} instance sits in front of all adapter methods. Cache TTLs are: 30 minutes for search results, 24 hours for place details, and 1 hour for route calculations. If ORS returns no results, \texttt{TravelService} falls back to Google Places, providing richer enrichment data; if both fail, an empty array is returned, satisfying NFR-08 without any change to the calling code.
 
 \begin{tcolorbox}[notebox]
   \textbf{Key patterns:} Facade (\texttt{TravelService} wraps multiple APIs behind a single interface), Strategy (swappable adapter implementations with a common normalised output format), Singleton (single \texttt{TravelService} instance shared across all routes).\\[2pt]

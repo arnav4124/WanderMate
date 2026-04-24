@@ -204,7 +204,7 @@ Facade, Strategy &
 
 \rowcolor{tablealtbg}
 4 & Search for POIs (text or category) &
-Client calls \code{GET /api/poi/search?q=\&lat=\&lng=\&radius=} through the API Gateway. The gateway's middleware stack applies: \code{helmet()} $\to$ \code{generalLimiter} $\to$ \code{authenticate} (JWT) $\to$ \code{externalApiLimiter} $\to$ route handler. The handler delegates to \code{TravelService.searchPOI()}, which checks \code{node-cache}, calls Google Places (primary), falls back to ORS POI on failure, sorts by Haversine distance, caps at 15 results, caches for 30 minutes, and returns normalised POIs. &
+Client calls \code{GET /api/poi/search?q=\&lat=\&lng=\&radius=} through the API Gateway. The gateway's middleware stack applies: \code{helmet()} $\to$ \code{generalLimiter} $\to$ \code{authenticate} (JWT) $\to$ \code{externalApiLimiter} $\to$ route handler. The handler delegates to \code{TravelService.searchPOI()}, which checks \code{node-cache}, calls ORS POI (primary), falls back to Google Places on empty result or failure, sorts by Haversine distance, caps at 15 results, caches for 30 minutes, and returns normalised POIs. &
 Facade, Strategy, Cache-Aside, API Gateway &
 \reqid{FR-05}, \reqid{FR-06}, \reqid{FR-07}, \reqid{NFR-01}, \reqid{NFR-06}, \reqid{NFR-08}, \reqid{NFR-11} \\
 
@@ -372,7 +372,7 @@ WanderMate uses a \textbf{backend API Gateway} (Node.js/Express) that proxies al
   \item All external API calls are routed: \emph{Client $\to$ API Gateway $\to$ External API}
   \item API keys exist only in server-side \code{.env}; zero secrets in the mobile bundle
   \item The Facade provides a common normalised POI interface regardless of provider
-  \item Provider fallback (Google $\to$ ORS $\to$ empty) is invisible to clients
+  \item Provider fallback (ORS $\to$ Google Places $\to$ empty) is invisible to clients
   \item \code{node-cache} caching sits inside the Facade (30\,min search / 24\,hr details / 1\,hr routes)
   \item Rate limiting (\code{express-rate-limit}) is enforced at the gateway
   \item Total middleware chain per request: Helmet $\to$ CORS $\to$ JSON parser $\to$ General rate limit $\to$ JWT auth $\to$ (external rate limit on POI/route endpoints) $\to$ route handler
@@ -416,7 +416,7 @@ API keys embedded in JavaScript bundle. Extractable via \code{apktool}/\code{jad
 \rowcolor{tablealtbg}
 \textbf{Reliability} (\reqid{NFR-08}) &
 \begin{tcolorbox}[winbox]
-Centralised fallback chain in Facade: Google $\to$ ORS $\to$ empty. One implementation, zero duplication. Provider failures invisible to client.
+Centralised fallback chain in Facade: ORS $\to$ Google Places $\to$ empty. One implementation, zero duplication. Provider failures invisible to client.
 \end{tcolorbox} &
 \begin{tcolorbox}[losebox]
 Each call site must implement its own error handling and fallback. Risk of inconsistent degradation. Provider failure may surface as blank screens in some views.
@@ -499,11 +499,11 @@ Abuse potential & Attacker cannot access keys; abuse requires attacking the gate
 \subsection{Quantitative Evaluation: NFR-08 (Graceful Degradation)}
 % -----------------------------------------------------------
 
-\reqid{NFR-08} states: \emph{``If the Google Places API is unavailable, POI search shall degrade gracefully to ORS POI results; no user-facing crash or blank screen shall occur.''}
+\reqid{NFR-08} states: \emph{``If the ORS POI endpoint returns no results, POI search shall fall back to Google Places; if Google Places is also unavailable, an empty result set shall be returned with no user-facing crash or blank screen.''}
 
-We compare how each architecture handles the scenario where Google Places returns an error (quota exceeded, network timeout, or API outage).
+We compare how each architecture handles the scenario where the ORS POI endpoint fails or returns no results.
 
-\subsubsection{Failure Scenario: Google Places API Unavailable}
+\subsubsection{Failure Scenario: ORS POI Endpoint Returns No Results}
 
 \begin{longtable}{L{3.0cm} L{5.0cm} L{5.0cm}}
 \toprule
@@ -515,8 +515,8 @@ We compare how each architecture handles the scenario where Google Places return
 \endfoot
 
 \textbf{Fallback implementation} &
-Single \code{try/catch} in \code{TravelService.searchPOI()}: Google $\to$ ORS $\to$ empty array. \textbf{1 code location}, 6 lines. &
-Each screen/component calling Google Places must independently implement fallback logic. Minimum \textbf{3 code locations} (Explore search, category browse, geocode), each with its own error handling. \\
+Single \code{try/catch} in \code{TravelService.searchPOI()}: ORS $\to$ Google Places $\to$ empty array. \textbf{1 code location}, 6 lines. &
+Each screen/component calling ORS must independently implement fallback logic. Minimum \textbf{3 code locations} (Explore search, category browse, geocode), each with its own error handling. \\
 
 \rowcolor{tablealtbg}
 \textbf{Code duplication} &
@@ -533,7 +533,7 @@ Bounded by \code{axios} timeout (10\,s for Places). Server logs capture all fail
 Bounded by client-side timeout. Failures are logged only on the device; no central monitoring. \\
 
 \textbf{Cascading failure risk} &
-Low. If Google fails, the Facade falls to ORS. If ORS also fails, an empty array is returned. The API Gateway itself remains operational. &
+Low. If ORS returns no results, the Facade falls through to Google Places. If Google Places also fails, an empty array is returned. The API Gateway itself remains operational. &
 Higher. Without centralised coordination, the client may retry aggressively against a failing API, exacerbating quota or timeout issues. \\
 
 \end{longtable}
@@ -771,7 +771,7 @@ Changes to routes & \textbf{0} & \code{poi.js}, \code{routes.js} --- no changes 
 Changes to stores & \textbf{0} & \code{tripStore.ts}, \code{budgetStore.ts} --- no changes needed \\
 Changes to UI screens & \textbf{0} & \code{explore2.tsx} --- no changes needed \\
 \rowcolor{tablealtbg}
-Functionally equivalent & \textbf{Yes} & POI search continues via PlacesAdapter $\to$ ORSAdapter fallback \\
+Functionally equivalent & \textbf{Yes} & POI search continues via ORSAdapter $\to$ PlacesAdapter fallback \\
 \end{longtable}
 
 \subsubsection{Effort to Add a New Provider}

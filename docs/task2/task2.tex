@@ -257,7 +257,7 @@ Following IEEE 42010, we define four viewpoints. Each viewpoint provides convent
 \begin{enumerate}
   \item \textbf{Mobile Client} (React Native / Expo) --- all user interaction, Zustand state management (\code{tripStore}, \code{budgetStore}, \code{feedStore}, \code{authStore}, \code{activeTripStore}), Leaflet WebView map, and offline cache (\code{localCache}, \code{syncQueue}).
   \item \textbf{API Gateway} (Node.js + Express) --- single backend entry point with middleware stack: \code{helmet()} security headers, \code{cors()}, \code{express.json()}, \code{generalLimiter} (100~req/15~min), and route-level \code{authenticate()} Firebase JWT verification (\code{middleware/auth.js}).
-  \item \textbf{POI \& Routing Service} (\code{TravelService} Facade) --- encapsulates \code{PlacesAdapter} (Google Places), \code{ORSAdapter} (OpenRouteService), and the disabled \code{OverpassAdapter} behind a unified interface with \code{node-cache} caching (30~min search, 24~hr details, 1~hr routes). Also provides a \code{geocode()} method using Nominatim (OSM) with Google Places fallback for destination resolution. All search results are sorted by Haversine distance from the map centre and capped at 15 (text) or 20 (category).
+  \item \textbf{POI \& Routing Service} (\code{TravelService} Facade) --- encapsulates \code{ORSAdapter} (OpenRouteService, primary), \code{PlacesAdapter} (Google Places, quota-sensitive fallback), and the disabled \code{OverpassAdapter} behind a unified interface with \code{node-cache} caching (30~min search, 24~hr details, 1~hr routes). Also provides a \code{geocode()} method using Nominatim (OSM) with Google Places fallback for destination resolution. All search results are sorted by Haversine distance from the map centre and capped at 15 (text) or 20 (category).
   \item \textbf{Itinerary \& Budget Engine} --- \code{Trip} and \code{Expense} Mongoose models, trip/budget routes, \code{TripController} with owner/collaborator authorization checks, \code{TripObserver} event emitter for Firebase sync.
   \item \textbf{Social Feed \& Community Service} --- \code{FeedPost} model with denormalised snapshots, feed pagination (\code{skip/limit}), publish/like/clone endpoints, follower graph (\code{User.followers[]}/\code{following[]}).
   \item \textbf{Auth \& User Profile} --- Firebase Authentication (Email/Password + Google OAuth), \code{User} Mongoose model, \code{authStore} with \code{onAuthStateChanged} listener.
@@ -636,12 +636,12 @@ We will implement a \code{TravelService} class (\code{services/travelService.js}
   \item \textbf{Proximity sorting:} Both \code{searchPOI()} and \code{searchByCategory()} compute the Haversine great-circle distance between the map centre and each POI using \code{\_calculateDistance(lat1, lon1, lat2, lon2)}, sort results by ascending distance, and apply a relevancy cap (15 results for text queries, 20 for category queries).
   \item \textbf{Singleton:} A module-level instance (\code{let instance = null}) with a \code{getTravelService()} factory function ensures one instance is shared across all route modules.
   \item \textbf{Caching:} A single \code{node-cache} instance inside the Facade applies per-method TTLs: 30~minutes for searches, 24~hours for details, 1~hour for routes, using key patterns such as \code{poi:*}, \code{cat:*}, \code{details:*}, and \code{route:*}.
-  \item \textbf{Fallback chain:} \code{searchPOI()} attempts Google Places first, catches failures, and falls through to ORS:
+  \item \textbf{Fallback chain:} \code{searchPOI()} attempts ORS first, catches failures or empty results, and falls through to Google Places:
   \begin{verbatim}
-    results = await this.places.searchPOI(query, lat, lng, radius)
+    results = await this.ors.searchPOI(query, lat, lng, radius)
                    .catch(err => { return []; });
     if (results.length === 0) {
-        results = await this.ors.searchPOI(query, lat, lng, radius)
+        results = await this.places.searchPOI(query, lat, lng, radius)
                      .catch(err => { return []; });
     }
   \end{verbatim}
@@ -658,14 +658,14 @@ We will implement a \code{TravelService} class (\code{services/travelService.js}
   \item \textbf{Provider independence:} Route handlers in \code{routes/poi.js} call \code{travelService.searchPOI()} (line~18) without knowing which provider responded. Adding Mapbox or HERE requires only a new adapter class and a registration line in the \code{TravelService} constructor.
   \item \textbf{Validated swappability:} The \code{OverpassAdapter} was disabled by commenting out its import in \code{travelService.js} --- zero changes to routes, stores, or UI components. This validates NFR-15.
   \item \textbf{Centralized caching:} One \code{node-cache} instance serves all providers; no duplicate cache logic. Cache key generation follows stable prefixed keys (for example: \code{poi:...}, \code{cat:...}, \code{details:...}, \code{route:...}).
-  \item \textbf{Graceful degradation:} The fallback chain (Google $\to$ ORS $\to$ empty) is invisible to consumers, satisfying NFR-08.
+  \item \textbf{Graceful degradation:} The fallback chain (ORS $\to$ Google Places $\to$ empty) is invisible to consumers, satisfying NFR-08.
 \end{itemize}
 
 \textbf{Negative:}
 \begin{itemize}
   \item An additional layer of abstraction increases code navigation complexity; developers must trace calls through the Facade to reach adapter implementations.
   \item The normalised POI interface is a least-common-denominator: rich Google Places data (photos, opening hours, price levels) is flattened alongside ORS's basic data, potentially underutilising provider-specific features.
-  \item The fallback chain introduces latency when the primary provider fails. Two sequential API calls (Google $\to$ ORS) are made before returning results, though caching mitigates this for repeated queries.
+  \item The fallback chain introduces latency when the primary provider fails. Two sequential API calls (ORS $\to$ Google Places) are made before returning results, though caching mitigates this for repeated queries.
 \end{itemize}
 
 \end{tcolorbox}
@@ -673,7 +673,7 @@ We will implement a \code{TravelService} class (\code{services/travelService.js}
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.90\textwidth]{adr003_facade_decision.pdf}
-\caption{ADR-003 Component Diagram: the TravelService Facade receives calls from route handlers, checks the \code{node-cache}, and dispatches to the fallback chain (Google Places $\to$ ORS $\to$ empty array). All adapters normalise responses to a common POI interface. The OverpassAdapter is implemented but currently disabled.}
+\caption{ADR-003 Component Diagram: the TravelService Facade receives calls from route handlers, checks the \code{node-cache}, and dispatches to the fallback chain (ORS $\to$ Google Places $\to$ empty array). All adapters normalise responses to a common POI interface. The OverpassAdapter is implemented but currently disabled.}
 \label{fig:adr003-facade}
 \end{figure}
 

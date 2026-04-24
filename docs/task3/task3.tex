@@ -124,7 +124,7 @@
 \section{Introduction}
 % ============================================================
 
-WanderMate is a social, collaborative mobile travel planner built as a React Native (Expo) frontend communicating with a Node.js/Express backend, backed by MongoDB for persistent storage and Firebase Realtime Database for real-time event propagation. The system integrates multiple external APIs --- Google Places (POI discovery), OpenRouteService (routing and optimization), Nominatim (geocoding with fallback to Google Places), and Overpass/OSM (disabled fallback) --- all proxied through a backend API Gateway.
+WanderMate is a social, collaborative mobile travel planner built as a React Native (Expo) frontend communicating with a Node.js/Express backend, backed by MongoDB for persistent storage and Firebase Realtime Database for real-time event propagation. The system integrates multiple external APIs --- OpenRouteService (primary POI search and routing), Google Places (quota-sensitive POI fallback with richer metadata), Nominatim (geocoding with fallback to Google Places), and Overpass/OSM (disabled fallback) --- all proxied through a backend API Gateway.
 
 The architecture must simultaneously satisfy demanding non-functional requirements spanning \textbf{performance}, \textbf{security}, \textbf{availability}, \textbf{scalability}, and \textbf{modifiability}, while operating within the economic constraints of free-tier API quotas. This document catalogues the \textbf{five architectural tactics} and \textbf{two design patterns} that form the backbone of WanderMate's architectural strategy, linking each to specific NFRs and illustrating their implementation with diagrams.
 
@@ -288,7 +288,7 @@ Graceful degradation is an \textbf{availability tactic} that ensures the system 
 
 \begin{itemize}
   \item \textbf{NFR-07 (Availability / Offline-first)} --- Core itinerary viewing and editing remain available when the device is offline, using AsyncStorage-backed local cache and a sync queue for pending mutations.
-  \item \textbf{NFR-08 (Reliability / API Failure)} --- When Google Places API is unavailable, POI search degrades gracefully to ORS POI results with zero user-facing crashes.
+  \item \textbf{NFR-08 (Reliability / API Failure)} --- When the ORS POI endpoint returns no results, POI search falls back to Google Places with zero user-facing crashes.
   \item \textbf{NFR-09 (Reliability / Error Handling)} --- Every failure scenario returns a structured JSON error response; uncaught exceptions are captured by the global Express error handler.
 \end{itemize}
 
@@ -297,13 +297,13 @@ Graceful degradation is an \textbf{availability tactic} that ensures the system 
 WanderMate implements graceful degradation at three levels:
 
 \begin{enumerate}
-  \item \textbf{Server-side Provider Fallback}: The \code{TravelService.searchPOI()} method wraps the Google Places API call in a \code{try/catch}. On failure (network timeout, quota exhaustion, invalid response), it silently falls through to the ORS POI endpoint:
+  \item \textbf{Server-side Provider Fallback}: The \code{TravelService.searchPOI()} method wraps the ORS POI API call in a \code{try/catch}. On failure or empty results, it silently falls through to the Google Places endpoint:
 
   \begin{verbatim}
-    results = await this.places.searchPOI(...)
+    results = await this.ors.searchPOI(...)
                      .catch(err => { return []; });
     if (results.length === 0) {
-        results = await this.ors.searchPOI(...)
+        results = await this.places.searchPOI(...)
                        .catch(err => { return []; });
     }
   \end{verbatim}
@@ -336,7 +336,7 @@ WanderMate implements graceful degradation at three levels:
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.65\textwidth]{degradation_flow.pdf}
-\caption{Graceful degradation chains. Left: server-side POI provider fallback (Google Places $\to$ ORS $\to$ empty). Right: client-side offline fallback (API $\to$ AsyncStorage cache $\to$ error message).}
+\caption{Graceful degradation chains. Left: server-side POI provider fallback (ORS $\to$ Google Places $\to$ empty). Right: client-side offline fallback (API $\to$ AsyncStorage cache $\to$ error message).}
 \label{fig:degradation}
 \end{figure}
 
@@ -473,7 +473,7 @@ The \code{TravelService} Facade exposes six high-level methods (\code{searchPOI}
 Provider Independence & Route handlers call \code{travelService.searchPOI()} without knowing whether the response came from Google Places, ORS, or Overpass. Adding a new provider requires implementing a new adapter class and registering it in the Facade constructor. \\
 
 \rowcolor{tablealtbg}
-Fallback Orchestration & The Facade's \code{searchPOI()} method implements the fallback chain (Google $\to$ ORS $\to$ empty). Adapters are unaware of each other; fallback logic is centralised in the Facade. \\
+Fallback Orchestration & The Facade's \code{searchPOI()} method implements the fallback chain (ORS $\to$ Google Places $\to$ empty). Adapters are unaware of each other; fallback logic is centralised in the Facade. \\
 
 Cache Management & Caching is handled once in the Facade (using \code{node-cache} with per-operation TTLs), preventing duplicate caching logic across adapters and route handlers. \\
 
@@ -578,7 +578,7 @@ T1: Multi-layer Caching & Facade + Strategy & Caching is centralised in the Faca
 \rowcolor{tablealtbg}
 T3: Rate Limiting & Facade + Strategy & Rate limiting is applied at the gateway layer, before the Facade is invoked. The Facade's unified interface means a single rate limiter covers all provider calls. \\
 
-T4: Graceful Degradation & Facade + Strategy & The fallback chain (Google $\to$ ORS $\to$ empty) is orchestrated inside the Facade. Adapters are unaware of fallback logic. \\
+T4: Graceful Degradation & Facade + Strategy & The fallback chain (ORS $\to$ Google Places $\to$ empty) is orchestrated inside the Facade. Adapters are unaware of fallback logic. \\
 
 \rowcolor{tablealtbg}
 T4: Graceful Degradation & Observer Pattern & The Observer pattern enables real-time state refresh after reconnection, complementing the sync queue's offline mutation queuing. \\
